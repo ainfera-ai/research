@@ -1,0 +1,11 @@
+                                 Apache License
+                           Version 2.0, January 2004
+
+SPDX-License-Identifier: Apache-2.0
+
+This repository's code is licensed under the Apache License, Version 2.0.
+Full text: https://www.apache.org/licenses/LICENSE-2.0
+
+NOTE FOR PUSH: replace this stub with the canonical full Apache 2.0 text, which
+already exists verbatim in sibling repos (e.g. ainfera-ai/routing/LICENSE).
+Papers under preprint/ are CC-BY-4.0; datasets under datasets/ are CC0-1.0.

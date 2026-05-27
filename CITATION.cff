@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+title: "Outcome-aware inference routing for AI agents"
+message: "If you use this work, please cite it as below."
+type: software
+authors:
+  - given-names: Hizrian
+    name-particle: ""
+    family-names: Raz
+    affiliation: Ainfera
+repository-code: "https://github.com/ainfera-ai/research"
+license: Apache-2.0
+date-released: "2026-05-27"
+keywords:
+  - llm-routing
+  - ai-agents
+  - contextual-bandits
+  - inference

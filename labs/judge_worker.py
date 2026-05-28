@@ -1,9 +1,25 @@
 """judge_worker.py — Opus 4.7 sampler for the L14.2 daily cadence.
 
-Reads `routing_outcomes` WHERE `judge_status='unlabeled'`. Samples per L14.2
-spec (target ≥5%, cap 100/run; 20% cold-start when cell has <10 prior
-labels). Calls Opus 4.7 via ainfera-inference (NOT direct Anthropic) and
-writes `judge_score` (1.0-5.0) + `judge_rationale` + `judge_labeled_at`.
+Reads `routing_outcomes` WHERE `judge_status='unlabeled'`
+AND `inference_id IS NOT NULL` (AIN-298 W7 cadence guard — see below).
+Samples per L14.2 spec (target ≥5%, cap 100/run; 20% cold-start when
+cell has <10 prior labels). Calls Opus 4.7 via ainfera-inference
+(NOT direct Anthropic) and writes `judge_score` (1.0-5.0) +
+`judge_rationale` + `judge_labeled_at`.
+
+AIN-298 W7 cadence guard — the `inference_id IS NOT NULL` filter
+excludes:
+  - Reject outcomes (no_candidate_clears_floor / no_candidate_enrolled)
+    — these are legit rows where the brain returned a reject, but
+    there's no inference to judge against.
+  - Pre-dispatch-failure rows (Cap / Funds / AgentNotActive /
+    ModelUnavailable per AIN-300 W1) — decision_rule is
+    'failed_pre_dispatch' AND no inference exists.
+  - The 2 legit `no_candidate_clears_floor` rows from §0 P1 baseline
+    (kept on chain for audit; never enter the judge queue).
+
+The guard is enforced by `select_unlabeled_sql()` below; if a future
+refactor drops it, `test_query_guards_null_inference_id` fails CI.
 
 Self-firewall (Discipline #12): for the rows it labels in this run, the
 worker EXCLUDES the Opus 4.7 model from the routable candidate set in the
@@ -36,6 +52,33 @@ from dataclasses import dataclass
 from typing import Any
 
 log = logging.getLogger(__name__)
+
+
+# --- AIN-298 W7 cadence guard SQL fragment --------------------------------
+
+
+def select_unlabeled_sql() -> str:
+    """The exact SELECT the judge sweep uses to find rows-to-label.
+
+    Returns a SQL string with the W7 guard baked in. Surfaced as a
+    function (not a constant) so the unit test can grep it directly and
+    a future refactor can't silently drop the `inference_id IS NOT NULL`
+    clause.
+
+    The guard is THE invariant: judge labels are scored against the
+    actual inference output, so rows without an inference (reject paths,
+    pre-dispatch failures) must never enter the queue.
+    """
+    return (
+        "SELECT id, agent_id, tenant_id, task_type, chosen_model_slug, "
+        "       chosen_model_id, created_at, inference_id "
+        "FROM routing_outcomes "
+        "WHERE judge_status = 'unlabeled' "
+        "  AND inference_id IS NOT NULL "
+        "  AND outcome_status = 'succeeded' "
+        "ORDER BY created_at ASC "
+        "LIMIT $1"
+    )
 
 
 # --- public types ----------------------------------------------------------

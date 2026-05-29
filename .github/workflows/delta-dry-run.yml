@@ -1,0 +1,18 @@
+name: delta-dry-run
+on:
+  push:
+    paths: ["benchmark/**", "eval/**", "datasets/**", ".github/workflows/delta-dry-run.yml"]
+  pull_request:
+    paths: ["benchmark/**", "eval/**", "datasets/**"]
+jobs:
+  delta:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r benchmark/requirements.txt
+      - name: AIN-288 synthetic delta dry-run (must exit 0, deterministic seed=7)
+        run: ./eval/run_delta.sh 7
+      - name: assert delta table emitted
+        run: test -s preprint/results.md && grep -q 'ainfera_learned' preprint/results.md

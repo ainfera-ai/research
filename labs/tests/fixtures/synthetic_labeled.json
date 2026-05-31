@@ -1,0 +1,17 @@
+[
+  {"id": "row-100", "task_type": "code", "chosen_candidate": "claude-opus-4-7", "judge_score": 4.5},
+  {"id": "row-101", "task_type": "code", "chosen_candidate": "claude-opus-4-7", "judge_score": 4.8},
+  {"id": "row-102", "task_type": "code", "chosen_candidate": "claude-opus-4-7", "judge_score": 4.6},
+  {"id": "row-103", "task_type": "code", "chosen_candidate": "claude-sonnet-4-6", "judge_score": 3.9},
+  {"id": "row-104", "task_type": "code", "chosen_candidate": "claude-sonnet-4-6", "judge_score": 4.0},
+  {"id": "row-105", "task_type": "code", "chosen_candidate": "claude-sonnet-4-6", "judge_score": 3.8},
+  {"id": "row-106", "task_type": "chat", "chosen_candidate": "gpt-5-5", "judge_score": 4.2},
+  {"id": "row-107", "task_type": "chat", "chosen_candidate": "gpt-5-5", "judge_score": 4.1},
+  {"id": "row-108", "task_type": "chat", "chosen_candidate": "claude-sonnet-4-6", "judge_score": 3.7},
+  {"id": "row-109", "task_type": "chat", "chosen_candidate": "claude-sonnet-4-6", "judge_score": 3.8},
+  {"id": "row-110", "task_type": "research", "chosen_candidate": "deepseek-r1-32b", "judge_score": 3.5},
+  {"id": "row-111", "task_type": "research", "chosen_candidate": "deepseek-r1-32b", "judge_score": 3.6},
+  {"id": "row-112", "task_type": "research", "chosen_candidate": "deepseek-r1-32b", "judge_score": 3.4},
+  {"id": "row-113", "task_type": "research", "chosen_candidate": "claude-opus-4-7", "judge_score": 4.7},
+  {"id": "row-114", "task_type": "research", "chosen_candidate": "claude-opus-4-7", "judge_score": 4.6}
+]

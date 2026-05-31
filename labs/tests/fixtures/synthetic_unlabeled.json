@@ -1,0 +1,12 @@
+[
+  {"id": "row-001", "task_type": "code", "chosen_candidate": "claude-opus-4-7", "tenant_id": "t-test", "created_at": "2026-05-27T08:00:00Z"},
+  {"id": "row-002", "task_type": "code", "chosen_candidate": "claude-sonnet-4-6", "tenant_id": "t-test", "created_at": "2026-05-27T08:01:00Z"},
+  {"id": "row-003", "task_type": "code", "chosen_candidate": "claude-opus-4-7", "tenant_id": "t-test", "created_at": "2026-05-27T08:02:00Z"},
+  {"id": "row-004", "task_type": "chat", "chosen_candidate": "gpt-5-5", "tenant_id": "t-test", "created_at": "2026-05-27T08:03:00Z"},
+  {"id": "row-005", "task_type": "chat", "chosen_candidate": "gpt-5-5", "tenant_id": "t-test", "created_at": "2026-05-27T08:04:00Z"},
+  {"id": "row-006", "task_type": "research", "chosen_candidate": "deepseek-r1-32b", "tenant_id": "t-test", "created_at": "2026-05-27T08:05:00Z"},
+  {"id": "row-007", "task_type": "research", "chosen_candidate": "deepseek-r1-32b", "tenant_id": "t-test", "created_at": "2026-05-27T08:06:00Z"},
+  {"id": "row-008", "task_type": "research", "chosen_candidate": "claude-opus-4-7", "tenant_id": "t-test", "created_at": "2026-05-27T08:07:00Z"},
+  {"id": "row-009", "task_type": "code", "chosen_candidate": "claude-sonnet-4-6", "tenant_id": "t-test", "created_at": "2026-05-27T08:08:00Z"},
+  {"id": "row-010", "task_type": "chat", "chosen_candidate": "claude-sonnet-4-6", "tenant_id": "t-test", "created_at": "2026-05-27T08:09:00Z"}
+]

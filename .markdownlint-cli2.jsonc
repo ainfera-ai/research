@@ -6,7 +6,8 @@
     "MD004": false,
     "MD022": false,
     "MD032": false,
-    "MD031": false
+    "MD031": false,
+    "MD060": false
   },
   "globs": ["**/*.md"],
   "ignores": ["node_modules/**", "preprint/**"]

@@ -1,0 +1,17 @@
+{
+  "version": "proof-eval-fixture-v20260615-001",
+  "hash": "b135107e81e36cbf67c0269c703590d5313b2ca9054c5bab3556a307fb1fb00c",
+  "note": "Synthetic, public-safe Stage-1 fixture. NOT a held-out routing_outcomes sample. Stage 2 (AIN-459) freezes >=200 real tasks/type on the Labs tenant.",
+  "tasks": [
+    {"id": "t-code-001", "task_type": "code", "prompt": "Write a function that reverses a linked list."},
+    {"id": "t-code-002", "task_type": "code", "prompt": "Fix the off-by-one error in this loop."},
+    {"id": "t-code-003", "task_type": "code", "prompt": "Add input validation to this handler."},
+    {"id": "t-code-004", "task_type": "code", "prompt": "Refactor this nested conditional."},
+    {"id": "t-summ-001", "task_type": "summarize", "prompt": "Summarize this support thread in three bullets."},
+    {"id": "t-summ-002", "task_type": "summarize", "prompt": "Condense this changelog into a release note."},
+    {"id": "t-summ-003", "task_type": "summarize", "prompt": "Summarize the key risks in this report."},
+    {"id": "t-extract-001", "task_type": "extract", "prompt": "Extract the invoice total and due date."},
+    {"id": "t-extract-002", "task_type": "extract", "prompt": "Extract all email addresses from this text."},
+    {"id": "t-extract-003", "task_type": "extract", "prompt": "Extract the action items from these notes."}
+  ]
+}

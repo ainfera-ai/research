@@ -1,0 +1,16 @@
+name: labs-tests
+on:
+  push:
+    paths: ["labs/**", ".github/workflows/labs-tests.yml"]
+  pull_request:
+    paths: ["labs/**", ".github/workflows/labs-tests.yml"]
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install pytest numpy
+      - name: labs unit tests (deterministic, no live calls)
+        run: python -m pytest labs/tests/ -q

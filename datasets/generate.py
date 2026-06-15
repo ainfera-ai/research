@@ -5,7 +5,10 @@ Nothing here is real Ainfera data. Latent qualities, prices, and the request
 stream are invented so the benchmark is reproducible without touching the
 operated corpus. Deterministic given --seed.
 """
-import argparse, json, os, random
+import argparse
+import json
+import os
+import random
 
 # 5 synthetic models. Names are generic; the shape (a strong-expensive model, a
 # cheap-weak model, and task-specialists) mirrors a real routable set.

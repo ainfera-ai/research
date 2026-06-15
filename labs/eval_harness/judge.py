@@ -13,10 +13,13 @@ Two invariants this module protects:
 
 from __future__ import annotations
 
+import os
+import re
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
 from labs.eval_harness import arms, config
+from labs.eval_harness.gateway import GatewayClient
 
 
 @dataclass(frozen=True)
@@ -50,6 +53,49 @@ class StubJudge:
         raise NotImplementedError(
             "judge.label: live Gemini 3.1 Pro labeling lands in Stage 2 (AIN-459). "
             "Stage 1 ships the held-out adapter interface only."
+        )
+
+
+DEFAULT_RUBRIC = (
+    "Score how well the answer completes the task on a 1-5 integer scale "
+    "(1 = fails, 5 = fully correct and complete). Reply with the single integer only."
+)
+
+
+def _parse_score(text: str) -> float:
+    m = re.search(r"[1-5](?:\.\d+)?", text or "")
+    if not m:
+        raise ValueError(f"judge returned no parseable 1-5 score: {text!r}")
+    return max(1.0, min(5.0, float(m.group(0))))
+
+
+class GatewayJudge:
+    """Live Gemini 3.1 Pro judge (Stage 2). Held out of all arms.
+
+    The scoring rubric is loaded from env (`LABS_EVAL_JUDGE_RUBRIC`) so the real
+    judge prompt — the moat — stays Labs-private; a neutral default is used
+    otherwise. Calls the held-out judge model via the gateway seam (pinned).
+    """
+
+    def __init__(
+        self, gw: GatewayClient, *, model: str | None = None, rubric: str | None = None
+    ) -> None:
+        self.model = model or config.JUDGE_MODEL
+        arms.assert_judge_held_out(judge_model=self.model)  # L3
+        self.gw = gw
+        self.rubric = rubric or os.environ.get("LABS_EVAL_JUDGE_RUBRIC", DEFAULT_RUBRIC)
+
+    def label(self, *, task: dict[str, Any], arm: str, output: str) -> JudgeLabel:
+        prompt = f"{self.rubric}\n\nTask:\n{task['prompt']}\n\nAnswer:\n{output}\n\nScore:"
+        r = self.gw.call(model=self.model, messages=[{"role": "user", "content": prompt}], max_tokens=8)
+        score = _parse_score(r.content)
+        task_id = task.get("id", "")
+        return JudgeLabel(
+            task_id=task_id,
+            arm=arm,
+            score=score,
+            success=success_from_score(score),
+            queued_for_human=queue_for_human(task_id),
         )
 
 

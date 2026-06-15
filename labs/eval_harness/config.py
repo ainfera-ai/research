@@ -79,3 +79,45 @@ MIN_TASKS_PER_TYPE = int(os.environ.get("LABS_EVAL_MIN_TASKS_PER_TYPE", "200"))
 
 # Deterministic seed for any sampling/spot-check selection (CRN, repo-wide idiom).
 CRN_SEED = int(os.environ.get("LABS_CRN_SEED", "20260528"))
+
+
+# === Stage 2 live wiring (AIN-459) — INERT until the founder enables ========
+# A SEPARATE, stronger gate than ENABLED_ENV: live model calls cost money and
+# need the Labs key. Default OFF. The cycle refuses a real run unless this is on
+# AND the probe-agent exclusion is configured AND the key is present.
+LIVE_ENV = "LABS_EVAL_LIVE"
+
+
+def live_enabled() -> bool:
+    """True only when LABS_EVAL_LIVE is explicitly truthy (default OFF)."""
+    return os.environ.get(LIVE_ENV, "false").strip().lower() in {"1", "true", "yes", "on"}
+
+
+# Gateway — names only; values are Doppler-rendered on the Labs tenant (L4).
+GATEWAY_BASE_URL_ENV = "AINFERA_BASE_URL"   # default https://api.ainfera.ai/v1
+GATEWAY_KEY_ENV = "AINFERA_API_KEY"          # Labs-tenant key (Doppler)
+
+# Arm C uses model="ainfera-inference", which writes a routing_outcomes row. To
+# keep it OUT of the moat (L2) it MUST run as a probe agent whose id is
+# registered server-side in _PROBE_AGENT_IDS_DEFAULT (→ traffic_class
+# 'internal_probe', excluded from training). The pinned arms (A/B/D members +
+# synthesizer) write NO routing_outcomes row at all, so they are excluded by
+# construction. Registering the probe-agent id is a founder tap.
+PROBE_AGENT_ID_ENV = "LABS_EVAL_PROBE_AGENT_ID"
+EXPECTED_TRAFFIC_CLASS = "internal_probe"
+ROUTED_MODEL = "ainfera-inference"
+
+# Hard cost ceiling for one cycle, USD (mirrors judge_worker's daily envelope).
+COST_CAP_USD = float(os.environ.get("LABS_EVAL_COST_CAP_USD", "25"))
+
+# Per-arm-call token bound (cost control).
+MAX_TOKENS = int(os.environ.get("LABS_EVAL_MAX_TOKENS", "1024"))
+
+# Where cycle artifacts are written — Labs-PRIVATE. NEVER the public repo / git:
+# frozen task sets and rich results derive from real routing_outcomes prompts
+# (the moat) and must not be committed. Default is an ephemeral dir.
+ARTIFACT_DIR_ENV = "LABS_EVAL_ARTIFACT_DIR"   # default /tmp/labs-eval
+
+
+def artifact_dir() -> str:
+    return os.environ.get(ARTIFACT_DIR_ENV, "/tmp/labs-eval")

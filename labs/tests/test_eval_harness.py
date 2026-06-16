@@ -249,6 +249,99 @@ def test_win_check_loses_when_not_cheaper():
     assert v.cheaper_than_premium is False
 
 
+# --- AIN-467: traffic-weighted success-rate comparison ---------------------
+#
+# Canon: decisions/locks-2026-06-15-proof-pipeline.md (lock 1) — eval totals are
+# traffic-weighted. Founder ratified option (b) on 2026-06-16: route the A and C
+# success rates through the existing traffic_weighted_success_rate(...) helper.
+#
+# Inert by default: with traffic_weights=None the helper weights each type by its
+# own per-arm count, which equals the POOLED rate — so win_check(calls) is
+# unchanged. Only when production task-type weights are supplied does the
+# within-epsilon comparison change.
+#
+# This fixture is built so the POOLED A-vs-C epsilon verdict and the
+# TRAFFIC-WEIGHTED verdict DISAGREE: C is heavily sampled on the type it beats A
+# on (code) and lightly sampled on the type it trails A on (summarize), so the
+# count-pooled C rate clears A-eps, while production weights that lean on
+# summarize pull the weighted C rate below A-eps.
+#
+#   code:      A = 90/100 = 0.90   C = 95/100 = 0.95   (C beats A)
+#   summarize: A = 90/100 = 0.90   C =   8/10 = 0.80   (C trails A by 10pt)
+#
+#   pooled A  = 180/200 = 0.900     pooled C  = 103/110 ≈ 0.93636
+#       → C >= A - 0.01  →  within_eps = True   (current/pooled behaviour)
+#   weighted (code=0.10, summarize=0.90): A = 0.90, C = 0.815
+#       → C <  A - 0.01  →  within_eps = False  (production-weighted behaviour)
+
+
+def _weighted_divergence_dataset() -> list:
+    calls = []
+    # A: balanced across both types.
+    calls += mk_calls("A", "code", n=100, successes=90, succ_cost=0.20)
+    calls += mk_calls("A", "summarize", n=100, successes=90, succ_cost=0.20)
+    # C: heavily sampled where it wins (code), lightly where it loses (summarize).
+    calls += mk_calls("C", "code", n=100, successes=95, succ_cost=0.02)
+    calls += mk_calls("C", "summarize", n=10, successes=8, succ_cost=0.02)
+    # D present so the cost comparisons have something to bite on.
+    calls += mk_calls("D", "code", n=100, successes=80, succ_cost=0.08)
+    calls += mk_calls("D", "summarize", n=100, successes=80, succ_cost=0.08)
+    return calls
+
+
+def test_win_check_pooled_is_backward_compatible():
+    """No traffic_weights ⇒ count-pooled rate ⇒ current behaviour unchanged.
+
+    The pooled C rate (≈0.936) clears A (0.90) minus epsilon, so the
+    within-epsilon sub-verdict is True — exactly what the pre-AIN-467 code,
+    which read m["A"].success_rate / m["C"].success_rate, produced.
+    """
+    calls = _weighted_divergence_dataset()
+    v = metrics.win_check(calls)
+    assert v.success_within_epsilon is True
+
+
+def test_win_check_traffic_weighted_flips_epsilon_verdict():
+    """Production weights leaning on `summarize` flip the success comparison.
+
+    Weighted C (0.815) trails weighted A (0.90) by more than epsilon, so the
+    within-epsilon sub-verdict becomes False — the traffic-weighted path the
+    lock mandates, and a DIFFERENT result from the pooled run above.
+    """
+    calls = _weighted_divergence_dataset()
+    weights = {"code": 0.10, "summarize": 0.90}
+
+    pooled = metrics.win_check(calls)
+    weighted = metrics.win_check(calls, traffic_weights=weights)
+
+    # The chosen behaviour: the same data yields opposite epsilon verdicts.
+    assert pooled.success_within_epsilon is True
+    assert weighted.success_within_epsilon is False
+    assert pooled.success_within_epsilon != weighted.success_within_epsilon
+
+    # Sanity: the traffic-weighted aggregate rates match the hand-computed values.
+    cells = metrics.by_arm_type(calls)
+    assert metrics.traffic_weighted_success_rate(cells, "A", weights=weights) == 0.9
+    assert metrics.traffic_weighted_success_rate(cells, "C", weights=weights) == 0.815
+    # weights=None reproduces the pooled (count-weighted) rate (inert default).
+    assert metrics.traffic_weighted_success_rate(cells, "C", weights=None) == \
+        metrics.compute_arm_metrics("C", calls).success_rate
+
+
+def test_win_check_explicit_uniform_weights_equal_pooled_when_counts_uniform():
+    """When per-type counts are uniform, explicit equal weights == pooled.
+
+    Guards the inert-by-default contract from the other side: on the existing
+    winning_dataset (10 calls per (arm,type)) supplying equal type weights must
+    not change the epsilon verdict versus the no-weights pooled run.
+    """
+    calls = winning_dataset()  # uniform n=10 per (arm, task_type)
+    pooled = metrics.win_check(calls)
+    weighted = metrics.win_check(calls, traffic_weights={"code": 1.0, "summarize": 1.0})
+    assert weighted.success_within_epsilon == pooled.success_within_epsilon
+    assert weighted.win == pooled.win is True
+
+
 # --- judge helpers ---------------------------------------------------------
 
 

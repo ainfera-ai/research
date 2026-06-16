@@ -1,0 +1,507 @@
+{
+  "version": "curated-synthetic-v20260616-001",
+  "hash": "dabb3f2cb9da3164f855f1ed82ea6864ebc4706289a62a15fb8da5bb48091d9c",
+  "note": "CURATED SYNTHETIC task set for the AIN-459 / Tap-3 integration cycle. These prompts are author-written, public-safe, and DO NOT derive from any real customer traffic \u2014 customer prompt text is NOT persisted in the schema, so a real-traffic freeze (loader.freeze_from_rows) has no data source yet. Numbers produced from this set are a PIPELINE proof only \u2014 NOT a measured real-traffic result. Any snapshot built from this set is tagged state=\"illustrative\" and must NEVER be published to /proof or read as measured. Stage-2 statistical run still requires >=200 real tasks/type (config.MIN_TASKS_PER_TYPE); this 20/type set will log an 'undersized' warning, which is expected for an integration cycle.",
+  "tasks": [
+    {
+      "id": "cur-code-001",
+      "task_type": "code",
+      "prompt": "Write a Python function that merges two sorted lists into one sorted list without using sorted()."
+    },
+    {
+      "id": "cur-code-002",
+      "task_type": "code",
+      "prompt": "Given this snippet, find and fix the off-by-one error in the for-loop that iterates over indices."
+    },
+    {
+      "id": "cur-code-003",
+      "task_type": "code",
+      "prompt": "Refactor this deeply nested if/else chain into an early-return style for readability."
+    },
+    {
+      "id": "cur-code-004",
+      "task_type": "code",
+      "prompt": "Implement a debounce decorator in JavaScript that delays a function call by N milliseconds."
+    },
+    {
+      "id": "cur-code-005",
+      "task_type": "code",
+      "prompt": "Write a SQL query that returns the top 5 customers by total order value in the last 30 days."
+    },
+    {
+      "id": "cur-code-006",
+      "task_type": "code",
+      "prompt": "Add input validation to this REST handler so it rejects requests with a missing or non-integer 'id'."
+    },
+    {
+      "id": "cur-code-007",
+      "task_type": "code",
+      "prompt": "Convert this synchronous file-reading function to an async version using asyncio."
+    },
+    {
+      "id": "cur-code-008",
+      "task_type": "code",
+      "prompt": "Write a unit test for a function that returns the nth Fibonacci number, covering edge cases 0 and 1."
+    },
+    {
+      "id": "cur-code-009",
+      "task_type": "code",
+      "prompt": "Explain why this recursive function causes a stack overflow on large inputs and rewrite it iteratively."
+    },
+    {
+      "id": "cur-code-010",
+      "task_type": "code",
+      "prompt": "Implement a least-recently-used (LRU) cache with a fixed capacity in Python using OrderedDict."
+    },
+    {
+      "id": "cur-code-011",
+      "task_type": "code",
+      "prompt": "Given this Dockerfile, reduce the final image size by switching to a multi-stage build."
+    },
+    {
+      "id": "cur-code-012",
+      "task_type": "code",
+      "prompt": "Write a regular expression that matches valid IPv4 addresses and reject 256+ octets."
+    },
+    {
+      "id": "cur-code-013",
+      "task_type": "code",
+      "prompt": "Parse this CSV string into a list of dictionaries keyed by the header row."
+    },
+    {
+      "id": "cur-code-014",
+      "task_type": "code",
+      "prompt": "Add structured logging to this function so each branch logs at the appropriate level."
+    },
+    {
+      "id": "cur-code-015",
+      "task_type": "code",
+      "prompt": "Write a function that flattens an arbitrarily nested list of integers into a single flat list."
+    },
+    {
+      "id": "cur-code-016",
+      "task_type": "code",
+      "prompt": "Fix the race condition in this counter that is incremented from multiple threads."
+    },
+    {
+      "id": "cur-code-017",
+      "task_type": "code",
+      "prompt": "Implement pagination for this database query using keyset (cursor) pagination instead of OFFSET."
+    },
+    {
+      "id": "cur-code-018",
+      "task_type": "code",
+      "prompt": "Write a bash script that finds and deletes files older than 7 days in a given directory."
+    },
+    {
+      "id": "cur-code-019",
+      "task_type": "code",
+      "prompt": "Convert this callback-based API client into one that returns Promises."
+    },
+    {
+      "id": "cur-code-020",
+      "task_type": "code",
+      "prompt": "Memoize this expensive pure function and explain when the cache should be invalidated."
+    },
+    {
+      "id": "cur-summ-001",
+      "task_type": "summarize",
+      "prompt": "Summarize this customer support thread into three bullet points capturing the issue, cause, and resolution."
+    },
+    {
+      "id": "cur-summ-002",
+      "task_type": "summarize",
+      "prompt": "Condense this 1,200-word changelog into a two-sentence release note for end users."
+    },
+    {
+      "id": "cur-summ-003",
+      "task_type": "summarize",
+      "prompt": "Summarize the key risks identified in this quarterly incident report for an executive audience."
+    },
+    {
+      "id": "cur-summ-004",
+      "task_type": "summarize",
+      "prompt": "Reduce this meeting transcript to a list of decisions made and owners assigned."
+    },
+    {
+      "id": "cur-summ-005",
+      "task_type": "summarize",
+      "prompt": "Write a one-paragraph abstract for this technical design document."
+    },
+    {
+      "id": "cur-summ-006",
+      "task_type": "summarize",
+      "prompt": "Summarize the main argument of this opinion article in neutral, non-editorial language."
+    },
+    {
+      "id": "cur-summ-007",
+      "task_type": "summarize",
+      "prompt": "Condense these five product reviews into a single balanced summary of pros and cons."
+    },
+    {
+      "id": "cur-summ-008",
+      "task_type": "summarize",
+      "prompt": "Summarize this legal contract clause in plain language a non-lawyer can understand."
+    },
+    {
+      "id": "cur-summ-009",
+      "task_type": "summarize",
+      "prompt": "Provide a TL;DR of this long email chain about the deployment delay."
+    },
+    {
+      "id": "cur-summ-010",
+      "task_type": "summarize",
+      "prompt": "Summarize the findings of this user-research study into three actionable insights."
+    },
+    {
+      "id": "cur-summ-011",
+      "task_type": "summarize",
+      "prompt": "Compress this onboarding guide into a quick-start checklist of no more than six steps."
+    },
+    {
+      "id": "cur-summ-012",
+      "task_type": "summarize",
+      "prompt": "Summarize the differences between the two proposed architectures discussed in this thread."
+    },
+    {
+      "id": "cur-summ-013",
+      "task_type": "summarize",
+      "prompt": "Write an executive summary of this annual report focusing on revenue and headcount."
+    },
+    {
+      "id": "cur-summ-014",
+      "task_type": "summarize",
+      "prompt": "Summarize the root cause and remediation of this postmortem in under 100 words."
+    },
+    {
+      "id": "cur-summ-015",
+      "task_type": "summarize",
+      "prompt": "Condense this API documentation page into a short cheat-sheet of the most-used endpoints."
+    },
+    {
+      "id": "cur-summ-016",
+      "task_type": "summarize",
+      "prompt": "Summarize the sentiment trend across these dated customer feedback entries."
+    },
+    {
+      "id": "cur-summ-017",
+      "task_type": "summarize",
+      "prompt": "Reduce this lecture transcript to a study outline with headings and sub-points."
+    },
+    {
+      "id": "cur-summ-018",
+      "task_type": "summarize",
+      "prompt": "Summarize the agreed next steps from this sprint retrospective."
+    },
+    {
+      "id": "cur-summ-019",
+      "task_type": "summarize",
+      "prompt": "Provide a short summary of this research paper's methodology and conclusion."
+    },
+    {
+      "id": "cur-summ-020",
+      "task_type": "summarize",
+      "prompt": "Summarize the competitive landscape described in this market analysis into a ranked list."
+    },
+    {
+      "id": "cur-extract-001",
+      "task_type": "extract",
+      "prompt": "Extract the invoice number, total amount, and due date from this billing email."
+    },
+    {
+      "id": "cur-extract-002",
+      "task_type": "extract",
+      "prompt": "Extract all email addresses mentioned in the following block of text."
+    },
+    {
+      "id": "cur-extract-003",
+      "task_type": "extract",
+      "prompt": "Extract the action items and their assignees from these meeting notes."
+    },
+    {
+      "id": "cur-extract-004",
+      "task_type": "extract",
+      "prompt": "Pull out every monetary figure and its currency from this financial statement."
+    },
+    {
+      "id": "cur-extract-005",
+      "task_type": "extract",
+      "prompt": "Extract the start date, end date, and location from this event description."
+    },
+    {
+      "id": "cur-extract-006",
+      "task_type": "extract",
+      "prompt": "Extract the list of dependencies and their pinned versions from this requirements file."
+    },
+    {
+      "id": "cur-extract-007",
+      "task_type": "extract",
+      "prompt": "Identify and extract all phone numbers from this contact sheet, normalized to E.164."
+    },
+    {
+      "id": "cur-extract-008",
+      "task_type": "extract",
+      "prompt": "Extract the key-value pairs from this semi-structured log line into JSON."
+    },
+    {
+      "id": "cur-extract-009",
+      "task_type": "extract",
+      "prompt": "Pull the names and titles of every person quoted in this press release."
+    },
+    {
+      "id": "cur-extract-010",
+      "task_type": "extract",
+      "prompt": "Extract the shipping address and tracking number from this order confirmation."
+    },
+    {
+      "id": "cur-extract-011",
+      "task_type": "extract",
+      "prompt": "Extract every URL in this document and label each as internal or external."
+    },
+    {
+      "id": "cur-extract-012",
+      "task_type": "extract",
+      "prompt": "Extract the SLA thresholds (uptime, response time) stated in this service agreement."
+    },
+    {
+      "id": "cur-extract-013",
+      "task_type": "extract",
+      "prompt": "Identify and extract the error codes and their descriptions from this troubleshooting guide."
+    },
+    {
+      "id": "cur-extract-014",
+      "task_type": "extract",
+      "prompt": "Extract the ingredient list and quantities from this recipe into a structured table."
+    },
+    {
+      "id": "cur-extract-015",
+      "task_type": "extract",
+      "prompt": "Pull out the API rate limits described anywhere in this documentation."
+    },
+    {
+      "id": "cur-extract-016",
+      "task_type": "extract",
+      "prompt": "Extract the company names and funding amounts from this list of funding announcements."
+    },
+    {
+      "id": "cur-extract-017",
+      "task_type": "extract",
+      "prompt": "Extract the dates and the corresponding metric values from this performance log."
+    },
+    {
+      "id": "cur-extract-018",
+      "task_type": "extract",
+      "prompt": "Identify and extract all the hashtags and @-mentions from these social posts."
+    },
+    {
+      "id": "cur-extract-019",
+      "task_type": "extract",
+      "prompt": "Extract the section headings and page numbers to build a table of contents."
+    },
+    {
+      "id": "cur-extract-020",
+      "task_type": "extract",
+      "prompt": "Extract the latitude/longitude coordinate pairs referenced in this field report."
+    },
+    {
+      "id": "cur-classify-001",
+      "task_type": "classify",
+      "prompt": "Classify this customer message as one of: billing, technical, account, or feedback."
+    },
+    {
+      "id": "cur-classify-002",
+      "task_type": "classify",
+      "prompt": "Label the sentiment of this product review as positive, neutral, or negative."
+    },
+    {
+      "id": "cur-classify-003",
+      "task_type": "classify",
+      "prompt": "Classify this email as spam or not spam and give a one-line reason."
+    },
+    {
+      "id": "cur-classify-004",
+      "task_type": "classify",
+      "prompt": "Categorize this support ticket by urgency: low, medium, high, or critical."
+    },
+    {
+      "id": "cur-classify-005",
+      "task_type": "classify",
+      "prompt": "Determine whether this code change is a bugfix, feature, refactor, or docs change."
+    },
+    {
+      "id": "cur-classify-006",
+      "task_type": "classify",
+      "prompt": "Classify the topic of this news headline into one of: politics, tech, sports, business."
+    },
+    {
+      "id": "cur-classify-007",
+      "task_type": "classify",
+      "prompt": "Label this log line by severity: debug, info, warning, or error."
+    },
+    {
+      "id": "cur-classify-008",
+      "task_type": "classify",
+      "prompt": "Classify this user query as informational, navigational, or transactional intent."
+    },
+    {
+      "id": "cur-classify-009",
+      "task_type": "classify",
+      "prompt": "Decide whether this paragraph is written in a formal or informal register."
+    },
+    {
+      "id": "cur-classify-010",
+      "task_type": "classify",
+      "prompt": "Classify this image caption as describing a person, place, object, or event."
+    },
+    {
+      "id": "cur-classify-011",
+      "task_type": "classify",
+      "prompt": "Tag this issue with the most relevant component label from a given list."
+    },
+    {
+      "id": "cur-classify-012",
+      "task_type": "classify",
+      "prompt": "Determine whether this transaction is likely fraudulent or legitimate, with a confidence note."
+    },
+    {
+      "id": "cur-classify-013",
+      "task_type": "classify",
+      "prompt": "Classify the programming language of this code snippet."
+    },
+    {
+      "id": "cur-classify-014",
+      "task_type": "classify",
+      "prompt": "Label this feedback as a feature request, bug report, or general praise."
+    },
+    {
+      "id": "cur-classify-015",
+      "task_type": "classify",
+      "prompt": "Classify the difficulty of this interview question as easy, medium, or hard."
+    },
+    {
+      "id": "cur-classify-016",
+      "task_type": "classify",
+      "prompt": "Decide whether this contract clause is favorable, neutral, or unfavorable to the buyer."
+    },
+    {
+      "id": "cur-classify-017",
+      "task_type": "classify",
+      "prompt": "Classify this medical-leaflet sentence as a dosage, a side effect, or a warning."
+    },
+    {
+      "id": "cur-classify-018",
+      "task_type": "classify",
+      "prompt": "Categorize this expense line into travel, meals, software, or other."
+    },
+    {
+      "id": "cur-classify-019",
+      "task_type": "classify",
+      "prompt": "Label whether this PR description adequately explains the change: yes or no."
+    },
+    {
+      "id": "cur-classify-020",
+      "task_type": "classify",
+      "prompt": "Classify the primary emotion expressed in this short message."
+    },
+    {
+      "id": "cur-reason-001",
+      "task_type": "reasoning",
+      "prompt": "Three friends split a $73.50 bill so that one pays double the others; how much does each pay?"
+    },
+    {
+      "id": "cur-reason-002",
+      "task_type": "reasoning",
+      "prompt": "If all Bloops are Razzies and all Razzies are Lazzies, are all Bloops definitely Lazzies? Explain."
+    },
+    {
+      "id": "cur-reason-003",
+      "task_type": "reasoning",
+      "prompt": "A train leaves at 2:15 PM going 60 mph; another leaves the same station at 3:00 PM going 80 mph on the same track. When does the second catch the first?"
+    },
+    {
+      "id": "cur-reason-004",
+      "task_type": "reasoning",
+      "prompt": "You have a 3-liter and a 5-liter jug; describe the steps to measure exactly 4 liters."
+    },
+    {
+      "id": "cur-reason-005",
+      "task_type": "reasoning",
+      "prompt": "Given the sequence 2, 6, 12, 20, 30, what is the next term and why?"
+    },
+    {
+      "id": "cur-reason-006",
+      "task_type": "reasoning",
+      "prompt": "A store offers 20% off then an additional 10% off; is that the same as 30% off? Justify."
+    },
+    {
+      "id": "cur-reason-007",
+      "task_type": "reasoning",
+      "prompt": "If it takes 5 machines 5 minutes to make 5 widgets, how long for 100 machines to make 100 widgets?"
+    },
+    {
+      "id": "cur-reason-008",
+      "task_type": "reasoning",
+      "prompt": "Decide whether the argument 'It rained, so the ground is wet; the ground is wet, so it rained' is valid."
+    },
+    {
+      "id": "cur-reason-009",
+      "task_type": "reasoning",
+      "prompt": "A farmer must cross a river with a fox, a chicken, and grain; outline a safe crossing plan."
+    },
+    {
+      "id": "cur-reason-010",
+      "task_type": "reasoning",
+      "prompt": "Given a 12% annual interest rate compounded monthly, what is the effective annual rate?"
+    },
+    {
+      "id": "cur-reason-011",
+      "task_type": "reasoning",
+      "prompt": "Which is heavier: a kilogram of feathers or a kilogram of steel? Explain the trick."
+    },
+    {
+      "id": "cur-reason-012",
+      "task_type": "reasoning",
+      "prompt": "If today is Wednesday, what day of the week will it be 100 days from now?"
+    },
+    {
+      "id": "cur-reason-013",
+      "task_type": "reasoning",
+      "prompt": "You flip a fair coin 3 times; what is the probability of getting at least two heads?"
+    },
+    {
+      "id": "cur-reason-014",
+      "task_type": "reasoning",
+      "prompt": "A rectangle's length is twice its width and its perimeter is 60; find its area."
+    },
+    {
+      "id": "cur-reason-015",
+      "task_type": "reasoning",
+      "prompt": "Reason about whether a self-referential statement 'this sentence is false' can be true or false."
+    },
+    {
+      "id": "cur-reason-016",
+      "task_type": "reasoning",
+      "prompt": "Given five people shaking hands once with each other, how many handshakes occur in total?"
+    },
+    {
+      "id": "cur-reason-017",
+      "task_type": "reasoning",
+      "prompt": "If a project is 60% done after 9 days at a constant rate, how many total days will it take?"
+    },
+    {
+      "id": "cur-reason-018",
+      "task_type": "reasoning",
+      "prompt": "Determine the missing number: 1, 1, 2, 3, 5, 8, __, and explain the rule."
+    },
+    {
+      "id": "cur-reason-019",
+      "task_type": "reasoning",
+      "prompt": "A car's value drops 15% each year; after how many years is it worth less than half?"
+    },
+    {
+      "id": "cur-reason-020",
+      "task_type": "reasoning",
+      "prompt": "Explain step by step why the sum of the first n odd numbers equals n squared."
+    }
+  ]
+}

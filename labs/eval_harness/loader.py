@@ -28,6 +28,12 @@ def select_candidates_sql() -> str:
     NOTE (wire-time): verify the prompt column name on the Labs schema — the
     judge sweep selects `id, task_type, …` but the prompt text may live in a
     joined `inferences` row. Holdout bucketing is applied in Python below.
+
+    BLOCKED (AIN-459 / 2026-06-16): the real-traffic freeze is deferred — customer
+    prompt text is NOT persisted anywhere in the current schema, so this query has
+    no `request_prompt` source and freeze_from_rows cannot run on real traffic.
+    Pending a prompt-persistence decision; the Tap-3 cycle uses a curated synthetic
+    task set instead (fixtures/curated_integration_taskset.json, illustrative-only).
     """
     return (
         "SELECT id, task_type, request_prompt "

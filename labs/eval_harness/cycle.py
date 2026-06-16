@@ -63,8 +63,16 @@ def run_cycle(
     generated_at: str,
     gateway: Any = None,
     judge: Any = None,
+    snapshot_state: str = "measured",
+    snapshot_source: str | None = None,
 ) -> CycleResult:
-    """Run one cycle. `generated_at` is passed in (no wall-clock in the module)."""
+    """Run one cycle. `generated_at` is passed in (no wall-clock in the module).
+
+    `snapshot_state`/`snapshot_source` default to the genuine measured-run
+    identity, so the default call is unchanged from today. A synthetic
+    integration cycle passes snapshot_state="illustrative" + a synthetic source
+    so the emitted web snapshot can never be read as a measured result.
+    """
     armset = tuple(s.arm for s in arms.arm_specs())
 
     # Build the real gateway only when not injected. Injected => test/dry path.
@@ -107,11 +115,17 @@ def run_cycle(
     arm_metrics = metrics.compute_all(calls, arms=armset)
     type_table = metrics.by_arm_type(calls)
     verdict = metrics.win_check(calls)
+    # snapshot_source=None → let build_web_snapshot apply its measured-run default
+    # (keeps the genuine path byte-identical). The synthetic cycle passes both.
+    snapshot_kwargs: dict[str, Any] = {"state": snapshot_state}
+    if snapshot_source is not None:
+        snapshot_kwargs["source"] = snapshot_source
     web = build_web_snapshot(
         version=taskset.version,
         generated_at=generated_at,
         arm_metrics=arm_metrics,
         type_table=type_table,
+        **snapshot_kwargs,
     )
     private = {
         "version": taskset.version,

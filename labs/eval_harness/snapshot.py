@@ -29,6 +29,11 @@ ARM_LABEL: dict[str, tuple[str, str]] = {
 }
 _ALLOWED_ARM_KEYS = {"id", "label", "kind", "cost_per_success", "success_rate"}
 
+# The genuine measured-run source string. Default for build_web_snapshot so the
+# real future path is unchanged; the curated synthetic cycle overrides both
+# `state` and `source` to make the snapshot unmistakably NOT a measured result.
+MEASURED_SOURCE = "Ainfera Labs eval — measured weekly snapshot (sanitized; founder-gated)."
+
 
 def build_web_snapshot(
     *,
@@ -36,8 +41,16 @@ def build_web_snapshot(
     generated_at: str,
     arm_metrics: dict[str, ArmMetrics],
     type_table: dict[tuple[str, str], TypeStat],
+    state: str = "measured",
+    source: str = MEASURED_SOURCE,
 ) -> dict[str, Any]:
-    """Sanitized, web-shaped snapshot. Mirrors lib/proof-snapshot.ts ProofSnapshot."""
+    """Sanitized, web-shaped snapshot. Mirrors lib/proof-snapshot.ts ProofSnapshot.
+
+    `state`/`source` default to the genuine measured-run identity, so a call with
+    no extra kwargs is byte-for-byte identical to today's behaviour. A synthetic
+    integration cycle passes state="illustrative" + a synthetic source so the
+    artifact can NEVER be mistaken for a measured result or published to /proof.
+    """
     arms_out: list[dict[str, Any]] = []
     for aid in ("C", "A", "B", "D"):
         m = arm_metrics.get(aid)
@@ -65,8 +78,8 @@ def build_web_snapshot(
     return {
         "version": version,
         "generated_at": generated_at,
-        "state": "measured",
-        "source": "Ainfera Labs eval — measured weekly snapshot (sanitized; founder-gated).",
+        "state": state,
+        "source": source,
         "arms": arms_out,
         "task_types": tt_out,
     }

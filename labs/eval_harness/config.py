@@ -52,11 +52,11 @@ EVAL_RUN_TAG = "proof_eval_labs"
 
 # Held-out judge. Named (methodology is public — judge_worker.py already names
 # its labeler openly); the judge PROMPT stays closed (it is not in this repo).
-JUDGE_MODEL = os.environ.get("LABS_EVAL_JUDGE_MODEL", "gemini-3.1-pro")
+JUDGE_MODEL = os.environ.get("LABS_EVAL_JUDGE_MODEL", "gemini-3-1-pro")
 
 # Fusion panel (arm D) internal synthesizer. A DISTINCT role from the judge —
 # it composes the panel's answer; it never scores outcomes.
-FUSION_SYNTHESIZER = os.environ.get("LABS_EVAL_FUSION_SYNTH", "opus-4.8")
+FUSION_SYNTHESIZER = os.environ.get("LABS_EVAL_FUSION_SYNTH", "claude-opus-4-8")
 
 # Fraction of judge labels queued for human spot-check (calibration).
 HUMAN_SPOTCHECK_PCT = float(os.environ.get("LABS_EVAL_HUMAN_SPOTCHECK_PCT", "0.10"))

@@ -193,10 +193,24 @@ def win_check(
     *,
     epsilon_pt: float | None = None,
     floor_arm: str | None = None,
+    traffic_weights: dict[str, float] | None = None,
 ) -> WinVerdict:
     """Evaluate arm C against the pre-registered win conditions.
 
     epsilon_pt is in PERCENTAGE POINTS (default config.EPSILON_PT = 1.0).
+
+    The success-rate (within-epsilon) comparison is TRAFFIC-WEIGHTED: the A and
+    C success rates are aggregated across task types via
+    ``traffic_weighted_success_rate`` (AIN-467, canon
+    ``decisions/locks-2026-06-15-proof-pipeline.md`` lock 1 — eval totals are
+    traffic-weighted). When ``traffic_weights`` is supplied (production
+    task-type weights) the comparison uses those weights; when it is omitted
+    (``None``) the function falls back to weighting each type by its own
+    per-arm count, which equals the POOLED success rate — so this is
+    backward-compatible and inert by default (no behaviour change until a live
+    cycle passes production weights). Only the within-epsilon success
+    comparison is traffic-weighted here; the cost_per_success comparisons are
+    out of scope for AIN-467 and remain pooled.
     """
     calls = list(calls)
     eps = (config.EPSILON_PT if epsilon_pt is None else epsilon_pt) / 100.0
@@ -211,8 +225,8 @@ def win_check(
     )
     floor_met = len(drift) == 0
 
-    a_rate = m["A"].success_rate
-    c_rate = m["C"].success_rate
+    a_rate = traffic_weighted_success_rate(cells, "A", weights=traffic_weights)
+    c_rate = traffic_weighted_success_rate(cells, "C", weights=traffic_weights)
     within_eps = c_rate >= (a_rate - eps)
 
     c_cps = m["C"].cost_per_success

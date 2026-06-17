@@ -46,7 +46,7 @@ import os
 import random
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Callable
 
 log = logging.getLogger(__name__)
 
@@ -92,11 +92,19 @@ def fit(
     alpha: float = 1.0,
     exploration_floor_pct: float = 0.05,
     today: datetime | None = None,
+    reward_fn: Callable[[dict[str, Any]], float] | None = None,
 ) -> PolicyCandidate:
     """Pure-function LinUCB refit. Deterministic given (rows, seed, alpha).
 
     CRN-safe: same inputs → same output bytes.
+
+    ``reward_fn`` maps a row → reward in [0,1]. Default = the judge mapping
+    (``(judge_score-1)/4``) for backward compatibility. The judge-FREE path
+    (``labeled_corpus.assemble_corpus``) pre-computes a ``reward`` field and
+    passes ``reward_fn=lambda r: r["reward"]`` so no judge label is required.
     """
+    if reward_fn is None:
+        reward_fn = lambda r: (r["judge_score"] - 1.0) / 4.0  # noqa: E731
     if seed is None:
         seed = int(os.environ.get("LABS_CRN_SEED", "20260528"))
     rng = random.Random(seed)
@@ -108,8 +116,7 @@ def fit(
         key = (row["task_type"], row["chosen_candidate"])
         c = cells.setdefault(key, {"n": 0, "reward_sum": 0.0})
         c["n"] += 1
-        # judge_score 1-5 → reward 0-1 (linear scale)
-        c["reward_sum"] += (row["judge_score"] - 1.0) / 4.0
+        c["reward_sum"] += reward_fn(row)
 
     t = max(1, sum(c["n"] for c in cells.values()))
 

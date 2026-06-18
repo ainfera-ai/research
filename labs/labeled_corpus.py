@@ -29,6 +29,7 @@ The Spark/cron runner executes the SQL and feeds rows to `assemble_corpus`.
 
 from __future__ import annotations
 
+import math
 import statistics
 from collections.abc import Iterable
 from typing import Any, Callable
@@ -95,3 +96,46 @@ def corpus_reward_variance(corpus: list[dict[str, Any]]) -> float:
     if len(rewards) < 2:
         return 0.0
     return statistics.pvariance(rewards)
+
+
+def cost_aware_corpus(
+    rows: Iterable[dict[str, Any]], *, require_text: bool = True
+) -> list[dict[str, Any]]:
+    """B1 reward (RATIFIED — vault://decisions/locks-2026-06-18-cost-aware-reward-ratify):
+
+        reward = 1{succeeded} · (1 − norm_cost)
+
+    where ``norm_cost`` is the row's ``cost_actual_usd`` LOG-min-max-normalized
+    **within its task_type**. Judge-free. Why the cost term: completion alone is
+    degenerate (all fleet rows succeed → flat 1.0, zero signal); cost spans ~10⁴×
+    on the live corpus, so cheaper-but-completing candidates score higher — the
+    "done-and-cheaper" objective. LOG scale (not linear) keeps the ~4-OOM spread
+    from collapsing all-but-the-priciest to ~1.
+
+    ⚠️ The normalization scope/scale is the executor's transparent default pending
+    **Námo** confirmation (per the lock); no policy promotes until the replay-gate
+    validates. Returns the ``{task_type, chosen_candidate, reward}`` records
+    ``linucb_refit.fit`` consumes (pass ``reward_fn=lambda r: r["reward"]``)."""
+    kept = [
+        r
+        for r in rows
+        if (not require_text or r.get("has_text"))
+        and r.get("cost_actual_usd") not in (None, 0, "0")
+    ]
+    log_by_tt: dict[str, list[float]] = {}
+    for r in kept:
+        log_by_tt.setdefault(r["task_type"], []).append(math.log(float(r["cost_actual_usd"])))
+    rng = {tt: (min(ls), max(ls)) for tt, ls in log_by_tt.items()}
+    out: list[dict[str, Any]] = []
+    for r in kept:
+        lo, hi = rng[r["task_type"]]
+        lc = math.log(float(r["cost_actual_usd"]))
+        norm_cost = 0.0 if hi == lo else (lc - lo) / (hi - lo)
+        out.append(
+            {
+                "task_type": r["task_type"],
+                "chosen_candidate": r["chosen_candidate"],
+                "reward": completion_reward(r) * (1.0 - norm_cost),
+            }
+        )
+    return out

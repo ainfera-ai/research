@@ -87,3 +87,46 @@ def test_all_succeeded_corpus_is_degenerate_and_visible():
     assert lc.corpus_reward_variance(corpus) == 0.0
     policy = fit(corpus, reward_fn=lambda r: r["reward"], seed=1)
     assert all(c.q_empirical == 1.0 for c in policy.cells)  # flat → no signal
+
+
+# ── B1 cost-aware reward (ratified) — the cost term carries the signal ────────
+
+
+def _crow(task, cand, cost, status="succeeded", has_text=True):
+    return {
+        "task_type": task,
+        "chosen_candidate": cand,
+        "outcome_status": status,
+        "cost_actual_usd": cost,
+        "has_text": has_text,
+    }
+
+
+def test_cost_aware_cheaper_candidate_scores_higher():
+    rows = [_crow("chat", "cheap", 0.0001), _crow("chat", "pricey", 0.1)]
+    out = {c["chosen_candidate"]: c["reward"] for c in lc.cost_aware_corpus(rows)}
+    assert out["cheap"] > out["pricey"]
+    assert out["cheap"] == 1.0 and out["pricey"] == 0.0  # log-min-max endpoints
+
+
+def test_cost_aware_is_non_degenerate_when_completion_is_flat():
+    # The whole point: all rows succeeded (completion flat 1.0) — completion-only
+    # has zero variance, but the cost term gives the cost-aware reward signal.
+    rows = [_crow(f"t{i%2}", f"m{i%4}", 10 ** -(i % 5 + 1)) for i in range(80)]
+    comp = lc.assemble_corpus(rows)  # completion-only
+    cost = lc.cost_aware_corpus(rows)  # cost-aware
+    assert lc.corpus_reward_variance(comp) == 0.0  # degenerate
+    assert lc.corpus_reward_variance(cost) > 0.0  # has signal ✓
+
+
+def test_cost_aware_failed_completion_zeros_reward():
+    # 1{succeeded} gates: a failed row scores 0 regardless of cost.
+    rows = [_crow("chat", "a", 0.0001, status="failed_other"), _crow("chat", "b", 0.1)]
+    out = {c["chosen_candidate"]: c["reward"] for c in lc.cost_aware_corpus(rows)}
+    assert out["a"] == 0.0  # failed → 0 even though cheapest
+
+
+def test_cost_aware_single_cost_no_divide_by_zero():
+    rows = [_crow("chat", "a", 0.01), _crow("chat", "b", 0.01)]
+    out = lc.cost_aware_corpus(rows)
+    assert all(c["reward"] == 1.0 for c in out)  # hi==lo → norm 0 → completion

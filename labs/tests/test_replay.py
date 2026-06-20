@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
 
 from labs.replay_gate import (
     EXPLORATION_FLOOR_PCT,

@@ -20,25 +20,29 @@ from typing import Any
 
 from labs.council_seats import Seat, family_of
 
-SeatCaller = Callable[[Seat, str, str], str]
+# (seat, task, first, second) -> 'first' | 'second' | 'tie'. The TASK is required
+# (AIN-546): without it a seat can't judge CORRECTNESS, only style — which made the
+# extraction/reasoning strata unjudgeable in the first stratified κ run.
+SeatCaller = Callable[[Seat, str, str, str], str]
 
 # Canonical slug→family map lives in council_seats now (AIN-546 single source of
 # truth). Re-exported here for back-compat with existing call sites.
 family_of_slug = family_of
 
 PAIRWISE_SYSTEM = (
-    "You are an impartial evaluator. You are shown a task and two candidate "
-    "responses, FIRST and SECOND. Decide which response is better (more correct, "
-    "complete, and useful). Reply with exactly one word: FIRST, SECOND, or TIE. "
-    "No explanation."
+    "You are an impartial evaluator. You are shown a TASK and two candidate "
+    "responses, FIRST and SECOND. Decide which response better completes the task "
+    "(more correct, complete, and useful). Reply with exactly one word: FIRST, "
+    "SECOND, or TIE. No explanation."
 )
 
 
-def build_pairwise_messages(first: str, second: str) -> list[dict[str, str]]:
+def build_pairwise_messages(task: str, first: str, second: str) -> list[dict[str, str]]:
     user = (
+        f"TASK:\n{task}\n\n"
         f"FIRST response:\n{first}\n\n"
         f"SECOND response:\n{second}\n\n"
-        "Which is better — FIRST, SECOND, or TIE?"
+        "For that task, which response is better — FIRST, SECOND, or TIE?"
     )
     return [
         {"role": "system", "content": PAIRWISE_SYSTEM},
@@ -110,12 +114,12 @@ def gateway_seat_caller(
     first to QUARANTINE persistently-down seats (don't let an outage masquerade
     as a tie — AIN-546)."""
 
-    def call(seat: Seat, first: str, second: str) -> str:
+    def call(seat: Seat, task: str, first: str, second: str) -> str:
         try:
             resp = _complete_with_retry(
                 client,
                 seat.model_slug,
-                build_pairwise_messages(first, second),
+                build_pairwise_messages(task, first, second),
                 max_tokens=max_tokens,
                 temperature=temperature,
                 retries=retries,

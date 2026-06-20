@@ -40,8 +40,8 @@ VOTE_CLASSES: tuple[Vote, ...] = (Vote.A, Vote.B, Vote.TIE)
 
 # A seat, shown an ordered pair, returns which POSITION it prefers (or a tie).
 _POS = {"first", "second", "tie"}
-# (Seat, first_output, second_output) -> 'first' | 'second' | 'tie'
-SeatCaller = Callable[[Seat, str, str], str]
+# (Seat, task, first_output, second_output) -> 'first' | 'second' | 'tie'
+SeatCaller = Callable[[Seat, str, str, str], str]
 
 
 def _canon(pos: str, first_is: Vote, second_is: Vote) -> Vote:
@@ -75,6 +75,7 @@ class Comparison:
 
 def make_comparison(
     item_id: str,
+    task: str,
     output_a: str,
     output_b: str,
     family_a: str,
@@ -83,12 +84,13 @@ def make_comparison(
     seats: tuple[Seat, ...] = COUNCIL_SEATS,
 ) -> Comparison:
     """Run the panel on one pair: apply family-exclusion, call each eligible seat
-    in BOTH orders, debias. ``seat_caller`` is the live seam (Step 3b)."""
+    in BOTH orders (with the TASK so it can judge correctness, not just style),
+    debias. ``seat_caller`` is the live seam (Step 3b)."""
     eligible, excluded = eligible_seats({family_a, family_b}, seats)
     votes: dict[str, Vote] = {}
     for seat in eligible:
-        ab = _canon(seat_caller(seat, output_a, output_b), Vote.A, Vote.B)
-        ba = _canon(seat_caller(seat, output_b, output_a), Vote.B, Vote.A)
+        ab = _canon(seat_caller(seat, task, output_a, output_b), Vote.A, Vote.B)
+        ba = _canon(seat_caller(seat, task, output_b, output_a), Vote.B, Vote.A)
         votes[seat.persona] = position_debiased_vote(ab, ba)
     return Comparison(item_id, family_a, family_b, votes, [s.persona for s in excluded])
 

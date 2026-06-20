@@ -30,10 +30,12 @@ def test_position_flip_collapses_to_tie() -> None:
 
 def test_make_comparison_cancels_a_pure_position_bias() -> None:
     # A seat that ALWAYS prefers whatever is shown first must net to TIE.
-    def always_first(seat, first, second):
+    def always_first(seat, task, first, second):
         return "first"
 
-    comp = make_comparison("i1", "out_a", "out_b", "anthropic", "openai", always_first)
+    comp = make_comparison(
+        "i1", "T", "out_a", "out_b", "anthropic", "openai", always_first
+    )
     assert set(comp.seat_votes.values()) == {Vote.TIE}
     # anthropic + openai seats excluded by family rule
     assert set(comp.excluded_seats) == {"Námo", "Manwë"}
@@ -41,11 +43,11 @@ def test_make_comparison_cancels_a_pure_position_bias() -> None:
 
 
 def test_make_comparison_consistent_preference() -> None:
-    def prefer_longer(seat, first, second):
+    def prefer_longer(seat, task, first, second):
         return "first" if len(first) >= len(second) else "second"
 
     comp = make_comparison(
-        "i1", "a-longer-output", "short", "google", "meta", prefer_longer
+        "i1", "T", "a-longer-output", "short", "google", "meta", prefer_longer
     )
     # google + meta excluded → anthropic/openai/xai remain, all prefer A
     assert set(comp.excluded_seats) == {"Aulë", "Yavanna"}
@@ -141,10 +143,12 @@ def test_verdict_floor_fails_below_three_seats() -> None:
 
 def test_live_roster_smoke() -> None:
     # the real roster drives make_comparison end-to-end with a fake caller
-    def caller(seat, first, second):
+    def caller(seat, task, first, second):
         return "first"
 
-    comp = make_comparison("x", "a", "b", "anthropic", "openai", caller, COUNCIL_SEATS)
+    comp = make_comparison(
+        "x", "T", "a", "b", "anthropic", "openai", caller, COUNCIL_SEATS
+    )
     verdicts, _ = run_council([comp], COUNCIL_SEATS)
     assert verdicts[0].n_seats == 3
     assert isinstance(verdicts[0].label, Vote)

@@ -27,7 +27,7 @@ from typing import Any, Callable
 from labs.council import Vote, make_comparison, run_council
 from labs.council_seats import COUNCIL_SEATS, Seat
 
-SeatCaller = Callable[[Seat, str, str], str]
+SeatCaller = Callable[[Seat, str, str, str], str]
 
 ANCHOR_KAPPA_GATE = 0.60
 
@@ -43,6 +43,7 @@ class AnchorPair:
     family_a: str
     family_b: str
     truth: Vote  # Vote.A or Vote.B — which output verify() rates higher
+    task: str = ""  # the request/question (AIN-546) so seats judge correctness
 
 
 def build_pairs(rows: Sequence[dict[str, Any]]) -> list[AnchorPair]:
@@ -58,6 +59,7 @@ def build_pairs(rows: Sequence[dict[str, Any]]) -> list[AnchorPair]:
         group = list(grp)
         wins = [r for r in group if float(r.get("verify_reward", 0)) >= 1.0]
         losses = [r for r in group if float(r.get("verify_reward", 0)) <= 0.0]
+        task = str(group[0].get("task", ""))  # same prompt → same task for the pair
         for w, ll in zip(wins, losses):
             iid = f"{key}:{idx}"
             if idx % 2 == 0:  # winner = A
@@ -69,6 +71,7 @@ def build_pairs(rows: Sequence[dict[str, Any]]) -> list[AnchorPair]:
                         w["family"],
                         ll["family"],
                         Vote.A,
+                        task,
                     )
                 )
             else:  # winner = B
@@ -80,6 +83,7 @@ def build_pairs(rows: Sequence[dict[str, Any]]) -> list[AnchorPair]:
                         ll["family"],
                         w["family"],
                         Vote.B,
+                        task,
                     )
                 )
             idx += 1
@@ -137,6 +141,7 @@ def compute_anchor_kappa(
     comparisons = [
         make_comparison(
             p.item_id,
+            p.task,
             p.output_a,
             p.output_b,
             p.family_a,

@@ -39,6 +39,7 @@ References:
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import math
@@ -46,6 +47,7 @@ import os
 import random
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable
 
 from labs.shrinkage import shrinkage_posterior
@@ -269,3 +271,121 @@ def apply_thompson_allocation(
         for c in policy.cells
     ]
     return replace(policy, cells=new_cells)
+
+
+def refit_policy(
+    labeled_rows: list[dict[str, Any]],
+    *,
+    seed: int | None = None,
+    alpha: float = 1.0,
+    exploration_floor_pct: float = 0.05,
+    today: datetime | None = None,
+    reward_fn: Callable[[dict[str, Any]], float] | None = None,
+    q_priors: dict[str, float] | None = None,
+    prior_strength: float = 0.0,
+    thompson: bool = False,
+    min_samples: int = 30,
+    thompson_floor_pct: float = 0.05,
+    thompson_draws: int = 4000,
+) -> PolicyCandidate:
+    """The nightly refit's composition point: ``fit`` (D1 shrinkage when
+    ``prior_strength>0``) then optionally ``apply_thompson_allocation`` (D7 when
+    ``thompson``). With ``prior_strength=0`` and ``thompson=False`` this is exactly
+    ``fit`` — byte-identical to v0. Both knobs are env-gated at the CLI boundary."""
+    policy = fit(
+        labeled_rows,
+        seed=seed,
+        alpha=alpha,
+        exploration_floor_pct=exploration_floor_pct,
+        today=today,
+        reward_fn=reward_fn,
+        priors=q_priors,
+        prior_strength=prior_strength,
+    )
+    if thompson:
+        policy = apply_thompson_allocation(
+            policy,
+            prior_strength=prior_strength,
+            min_samples=min_samples,
+            floor_pct=thompson_floor_pct,
+            seed=seed,
+            draws=thompson_draws,
+        )
+    return policy
+
+
+def _truthy(value: str | None) -> bool:
+    return (value or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _main(argv: list[str] | None = None) -> int:
+    """`python3 -m labs.linucb_refit` — refit a policy candidate from a labeled-corpus
+    JSON file. D1/D7 are env-gated and DEFAULT OFF (so the published candidate is the v0
+    policy until the founder sets the flags):
+
+        LABS_PRIOR_STRENGTH     D1 shrinkage prior pseudo-count (default 0 = raw mean)
+        LABS_THOMPSON           D7 Thompson allocation on/off (default off)
+        LABS_MIN_SAMPLES        D7 min-sample floor count (default 30)
+        LABS_THOMPSON_FLOOR_PCT D7 floor share per under-sampled cell (default 0.05)
+        LABS_CRN_SEED           CRN seed (existing)
+
+    The corpus + priors come in as files — labs stays DB-free, so the ops wrapper binds
+    `labeled_corpus.select_labeled_corpus_sql()` → --corpus and the catalog q_priors →
+    --priors. The candidate then flows through replay_gate (cron.sh) → founder promote.
+    """
+    p = argparse.ArgumentParser(prog="labs.linucb_refit")
+    p.add_argument(
+        "--corpus", required=True, help="JSON: [{task_type, chosen_candidate, reward}]"
+    )
+    p.add_argument(
+        "--output", required=True, help="path to write the policy-candidate JSON"
+    )
+    p.add_argument(
+        "--priors", help="JSON: {candidate_slug: q_prior} for D1 shrinkage (optional)"
+    )
+    p.add_argument("--date", help="policy date YYYY-MM-DD (default: today UTC)")
+    p.add_argument(
+        "--input-corpus-days",
+        type=int,
+        default=30,
+        help="recorded for provenance; corpus binding itself is the ops wrapper's job",
+    )
+    args = p.parse_args(argv)
+
+    rows = json.loads(Path(args.corpus).read_text())
+    q_priors = json.loads(Path(args.priors).read_text()) if args.priors else None
+    today = (
+        datetime.strptime(args.date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        if args.date
+        else datetime.now(tz=timezone.utc)
+    )
+
+    prior_strength = float(os.environ.get("LABS_PRIOR_STRENGTH", "0"))
+    thompson = _truthy(os.environ.get("LABS_THOMPSON"))
+    min_samples = int(os.environ.get("LABS_MIN_SAMPLES", "30"))
+    floor_pct = float(os.environ.get("LABS_THOMPSON_FLOOR_PCT", "0.05"))
+
+    policy = refit_policy(
+        rows,
+        today=today,
+        reward_fn=lambda r: r["reward"],
+        q_priors=q_priors,
+        prior_strength=prior_strength,
+        thompson=thompson,
+        min_samples=min_samples,
+        thompson_floor_pct=floor_pct,
+    )
+    Path(args.output).write_text(policy.to_json())
+    log.info(
+        "refit → %s (cells=%d prior_strength=%s thompson=%s)",
+        args.output,
+        len(policy.cells),
+        prior_strength,
+        thompson,
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    raise SystemExit(_main())

@@ -44,11 +44,12 @@ import logging
 import math
 import os
 import random
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from typing import Any, Callable
 
 from labs.shrinkage import shrinkage_posterior
+from labs.thompson import Posterior, allocate_with_floor, thompson_probabilities
 
 log = logging.getLogger(__name__)
 
@@ -67,6 +68,10 @@ class CellEstimate:
     # byte-identical.
     q_prior: float | None = None
     prior_weight: float = 0.0
+    # D7 Thompson allocation (AIN-542): this cell's exploration share within its
+    # task_type, from the posterior P[best] + a min-sample floor. None when Thompson
+    # is off — _cell_json omits it so the v0 artifact stays byte-identical.
+    alloc_weight: float | None = None
 
 
 @dataclass
@@ -108,6 +113,8 @@ def _cell_json(c: CellEstimate) -> dict[str, Any]:
     if c.q_prior is not None:
         d["q_prior"] = c.q_prior
         d["prior_weight"] = c.prior_weight
+    if c.alloc_weight is not None:
+        d["alloc_weight"] = c.alloc_weight
     return d
 
 
@@ -209,3 +216,56 @@ def fit(
         alpha=alpha,
         cells=estimates,
     )
+
+
+def apply_thompson_allocation(
+    policy: PolicyCandidate,
+    *,
+    prior_strength: float = 0.0,
+    min_samples: int = 30,
+    floor_pct: float = 0.05,
+    seed: int | None = None,
+    draws: int = 4000,
+) -> PolicyCandidate:
+    """Return a copy of `policy` with per-cell ``alloc_weight`` set by Thompson
+    sampling + a min-sample floor, computed WITHIN each task_type (D7, AIN-542).
+
+    The Beta posterior per cell is recovered from its published ``q_empirical`` and
+    ``n_labeled`` given ``prior_strength`` — the same value passed to ``fit`` — since
+    α+β = prior_strength+n and α = q_empirical·(α+β). This is a pure read of the
+    policy artifact (no corpus needed) and is deterministic given ``seed`` (defaults
+    to LABS_CRN_SEED), so the allocation replays exactly.
+
+    A separate post-processor (not folded into ``fit``) so a policy that does NOT go
+    through it is byte-identical to v0 — Thompson is strictly opt-in.
+    """
+    if seed is None:
+        seed = int(os.environ.get("LABS_CRN_SEED", "20260528"))
+
+    by_task: dict[str, list[CellEstimate]] = {}
+    for c in policy.cells:
+        by_task.setdefault(c.task_type, []).append(c)
+
+    alloc_by_cell: dict[tuple[str, str], float] = {}
+    for task_offset, (tt, group) in enumerate(sorted(by_task.items())):
+        posteriors: list[Posterior] = []
+        n_by: dict[str, int] = {}
+        for c in group:
+            sn = prior_strength + c.n_labeled
+            alpha = max(c.q_empirical * sn, 1e-9)
+            beta = max((1.0 - c.q_empirical) * sn, 1e-9)
+            posteriors.append(Posterior(c.candidate, alpha, beta, c.n_labeled))
+            n_by[c.candidate] = c.n_labeled
+        # distinct per-task seed so independent task_types don't share a draw stream
+        probs = thompson_probabilities(posteriors, draws=draws, seed=seed + task_offset)
+        alloc = allocate_with_floor(
+            probs, n_by, min_samples=min_samples, floor_pct=floor_pct
+        )
+        for c in group:
+            alloc_by_cell[(tt, c.candidate)] = alloc[c.candidate]
+
+    new_cells = [
+        replace(c, alloc_weight=round(alloc_by_cell[(c.task_type, c.candidate)], 6))
+        for c in policy.cells
+    ]
+    return replace(policy, cells=new_cells)

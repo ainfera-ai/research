@@ -43,8 +43,8 @@ def test_cold_start_picks_more_when_cell_underlabeled(unlabeled_rows):
         unlabeled_rows=unlabeled_rows,
         sample_target_pct=0.05,
         sample_max=100,
-        cold_start_pct=0.50,    # high cold-start
-        cell_label_counts={},   # all cells in cold-start regime
+        cold_start_pct=0.50,  # high cold-start
+        cell_label_counts={},  # all cells in cold-start regime
     )
     warm_selected = select_sample(
         unlabeled_rows=unlabeled_rows,
@@ -79,18 +79,22 @@ def test_sample_max_caps_count(unlabeled_rows):
 
 
 def test_empty_input_returns_empty():
-    assert select_sample(
-        unlabeled_rows=[],
-        sample_target_pct=0.05,
-        sample_max=100,
-        cold_start_pct=0.20,
-        cell_label_counts={},
-    ) == []
+    assert (
+        select_sample(
+            unlabeled_rows=[],
+            sample_target_pct=0.05,
+            sample_max=100,
+            cold_start_pct=0.20,
+            cell_label_counts={},
+        )
+        == []
+    )
 
 
 def test_run_one_cycle_skeleton_raises():
     """W6 skeleton — real DB + Opus integration lands in AIN-290 follow-up."""
     from labs.judge_worker import run_one_cycle
+
     with pytest.raises(NotImplementedError):
         run_one_cycle()
 

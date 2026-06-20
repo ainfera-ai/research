@@ -81,7 +81,7 @@ def test_backward_compatible_judge_mapping_still_works():
 def test_all_succeeded_corpus_is_degenerate_and_visible():
     # The live 2026-06-17 reality: every reward row succeeded. A completion-only
     # refit then yields a FLAT policy (q=1.0 everywhere) — it learns nothing.
-    rows = [_row(f"t{i%3}", f"m{i%4}", "succeeded") for i in range(120)]
+    rows = [_row(f"t{i % 3}", f"m{i % 4}", "succeeded") for i in range(120)]
     corpus = lc.assemble_corpus(rows)
     # The guard the runner must honour: ~zero variance → HOLD, not silent "train".
     assert lc.corpus_reward_variance(corpus) == 0.0
@@ -112,7 +112,7 @@ def test_cost_aware_cheaper_candidate_scores_higher():
 def test_cost_aware_is_non_degenerate_when_completion_is_flat():
     # The whole point: all rows succeeded (completion flat 1.0) — completion-only
     # has zero variance, but the cost term gives the cost-aware reward signal.
-    rows = [_crow(f"t{i%2}", f"m{i%4}", 10 ** -(i % 5 + 1)) for i in range(80)]
+    rows = [_crow(f"t{i % 2}", f"m{i % 4}", 10 ** -(i % 5 + 1)) for i in range(80)]
     comp = lc.assemble_corpus(rows)  # completion-only
     cost = lc.cost_aware_corpus(rows)  # cost-aware
     assert lc.corpus_reward_variance(comp) == 0.0  # degenerate

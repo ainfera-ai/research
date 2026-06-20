@@ -24,18 +24,31 @@ TASKSET = FIXTURES / "eval_harness_taskset.json"
 # --- helpers ---------------------------------------------------------------
 
 
-def mk_calls(arm: str, task_type: str, *, n: int, successes: int, succ_cost: float,
-             fail_cost: float = 0.001) -> list[ArmCall]:
+def mk_calls(
+    arm: str,
+    task_type: str,
+    *,
+    n: int,
+    successes: int,
+    succ_cost: float,
+    fail_cost: float = 0.001,
+) -> list[ArmCall]:
     """n calls for one (arm, task_type); `successes` succeed at succ_cost each."""
     out: list[ArmCall] = []
     for i in range(n):
         ok = i < successes
-        out.append(ArmCall(
-            arm=arm, task_id=f"{arm}-{task_type}-{i}", task_type=task_type,
-            success=ok, cost_usd=succ_cost if ok else fail_cost,
-            tenant=config.LABS_TENANT, excluded_from_training=True,
-            eval_run_tag=config.EVAL_RUN_TAG,
-        ))
+        out.append(
+            ArmCall(
+                arm=arm,
+                task_id=f"{arm}-{task_type}-{i}",
+                task_type=task_type,
+                success=ok,
+                cost_usd=succ_cost if ok else fail_cost,
+                tenant=config.LABS_TENANT,
+                excluded_from_training=True,
+                eval_run_tag=config.EVAL_RUN_TAG,
+            )
+        )
     return out
 
 
@@ -115,15 +128,31 @@ def test_excluded_call_passes():
 
 
 def test_wrong_tenant_fails_closed():
-    c = ArmCall("C", "t", "code", True, 0.02, tenant="prod",
-                excluded_from_training=True, eval_run_tag=config.EVAL_RUN_TAG)
+    c = ArmCall(
+        "C",
+        "t",
+        "code",
+        True,
+        0.02,
+        tenant="prod",
+        excluded_from_training=True,
+        eval_run_tag=config.EVAL_RUN_TAG,
+    )
     with pytest.raises(AssertionError, match="Labs"):
         arms.assert_excluded(c)
 
 
 def test_not_excluded_from_training_fails_closed():
-    c = ArmCall("C", "t", "code", True, 0.02, tenant=config.LABS_TENANT,
-                excluded_from_training=False, eval_run_tag=config.EVAL_RUN_TAG)
+    c = ArmCall(
+        "C",
+        "t",
+        "code",
+        True,
+        0.02,
+        tenant=config.LABS_TENANT,
+        excluded_from_training=False,
+        eval_run_tag=config.EVAL_RUN_TAG,
+    )
     with pytest.raises(AssertionError, match="training"):
         arms.assert_excluded(c)
 
@@ -232,7 +261,11 @@ def test_win_check_c_wins():
 
 
 def test_win_check_drift_pages_founder():
-    calls = [c for c in winning_dataset() if not (c.arm == "C" and c.task_type == "summarize")]
+    calls = [
+        c
+        for c in winning_dataset()
+        if not (c.arm == "C" and c.task_type == "summarize")
+    ]
     calls += mk_calls("C", "summarize", n=10, successes=6, succ_cost=0.02)
     v = metrics.win_check(calls)
     assert v.win is False
@@ -324,8 +357,10 @@ def test_win_check_traffic_weighted_flips_epsilon_verdict():
     assert metrics.traffic_weighted_success_rate(cells, "A", weights=weights) == 0.9
     assert metrics.traffic_weighted_success_rate(cells, "C", weights=weights) == 0.815
     # weights=None reproduces the pooled (count-weighted) rate (inert default).
-    assert metrics.traffic_weighted_success_rate(cells, "C", weights=None) == \
-        metrics.compute_arm_metrics("C", calls).success_rate
+    assert (
+        metrics.traffic_weighted_success_rate(cells, "C", weights=None)
+        == metrics.compute_arm_metrics("C", calls).success_rate
+    )
 
 
 def test_win_check_explicit_uniform_weights_equal_pooled_when_counts_uniform():

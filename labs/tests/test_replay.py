@@ -13,7 +13,9 @@ from labs.replay_gate import (
 )
 
 
-def _cell(task_type: str, candidate: str, dnc: float, n: int = 100, explore: float = 0.10):
+def _cell(
+    task_type: str, candidate: str, dnc: float, n: int = 100, explore: float = 0.10
+):
     return {
         "task_type": task_type,
         "candidate": candidate,
@@ -28,8 +30,10 @@ def test_promote_when_all_guards_pass():
     incumbent = [_cell("code", "opus", 60.0), _cell("chat", "gpt", 55.0)]
     candidate = [_cell("code", "opus", 61.0), _cell("chat", "gpt", 56.0)]
     v = decide(
-        incumbent_cells=incumbent, candidate_cells=candidate,
-        incumbent_version="v1", candidate_version="v2",
+        incumbent_cells=incumbent,
+        candidate_cells=candidate,
+        incumbent_version="v1",
+        candidate_version="v2",
     )
     assert v.decision == "PROMOTE"
     assert v.guard_delta_met
@@ -44,8 +48,10 @@ def test_hold_on_insufficient_delta():
     incumbent = [_cell("code", "opus", 60.0)]
     candidate = [_cell("code", "opus", 60.3)]
     v = decide(
-        incumbent_cells=incumbent, candidate_cells=candidate,
-        incumbent_version="v1", candidate_version="v2",
+        incumbent_cells=incumbent,
+        candidate_cells=candidate,
+        incumbent_version="v1",
+        candidate_version="v2",
     )
     assert v.decision == "HOLD"
     assert not v.guard_delta_met
@@ -60,11 +66,13 @@ def test_hold_on_cell_regression():
     ]
     candidate = [
         _cell("code", "opus", 80.0),
-        _cell("chat", "gpt", 66.0),   # -4pp regression
+        _cell("chat", "gpt", 66.0),  # -4pp regression
     ]
     v = decide(
-        incumbent_cells=incumbent, candidate_cells=candidate,
-        incumbent_version="v1", candidate_version="v2",
+        incumbent_cells=incumbent,
+        candidate_cells=candidate,
+        incumbent_version="v1",
+        candidate_version="v2",
     )
     assert v.decision == "HOLD"
     assert not v.guard_no_regression
@@ -76,8 +84,10 @@ def test_hold_on_exploration_floor_violation():
     incumbent = [_cell("code", "opus", 60.0, explore=0.10)]
     candidate = [_cell("code", "opus", 70.0, explore=0.02)]  # below 0.05
     v = decide(
-        incumbent_cells=incumbent, candidate_cells=candidate,
-        incumbent_version="v1", candidate_version="v2",
+        incumbent_cells=incumbent,
+        candidate_cells=candidate,
+        incumbent_version="v1",
+        candidate_version="v2",
     )
     assert v.decision == "HOLD"
     assert not v.guard_exploration_floor
@@ -88,8 +98,10 @@ def test_hold_on_undersize_cell():
     incumbent = [_cell("code", "opus", 60.0, n=25)]
     candidate = [_cell("code", "opus", 70.0, n=25)]
     v = decide(
-        incumbent_cells=incumbent, candidate_cells=candidate,
-        incumbent_version="v1", candidate_version="v2",
+        incumbent_cells=incumbent,
+        candidate_cells=candidate,
+        incumbent_version="v1",
+        candidate_version="v2",
     )
     assert v.decision == "HOLD"
     assert not v.guard_min_sample
@@ -109,10 +121,13 @@ def test_verdict_serializes_to_json():
     incumbent = [_cell("code", "opus", 60.0)]
     candidate = [_cell("code", "opus", 61.0)]
     v = decide(
-        incumbent_cells=incumbent, candidate_cells=candidate,
-        incumbent_version="v1", candidate_version="v2",
+        incumbent_cells=incumbent,
+        candidate_cells=candidate,
+        incumbent_version="v1",
+        candidate_version="v2",
     )
     import json
+
     payload = json.loads(v.to_json())
     assert payload["decision"] == "PROMOTE"
     assert payload["guards"]["delta_met"] is True

@@ -28,15 +28,15 @@ CURATED_PATH = (
 
 def _cost_for(model: str) -> float:
     if model == config.ROUTED_MODEL:
-        return 0.02            # arm C (router) — cheap per call
+        return 0.02  # arm C (router) — cheap per call
     if model == config.FUSION_SYNTHESIZER:
-        return 0.02            # arm D synthesizer
+        return 0.02  # arm D synthesizer
     if "premium" in model:
-        return 0.20            # arm A
+        return 0.20  # arm A
     if "cheap" in model:
-        return 0.01            # arm B
+        return 0.01  # arm B
     if "panel" in model:
-        return 0.03            # each arm D member
+        return 0.03  # each arm D member
     return 0.05
 
 
@@ -47,7 +47,9 @@ class FakeGateway:
         self.calls: list[dict] = []
         self.judge_score = judge_score
 
-    def call(self, *, model, messages, max_tokens=None, task_type=None, routing_hint=None):
+    def call(
+        self, *, model, messages, max_tokens=None, task_type=None, routing_hint=None
+    ):
         self.calls.append({"model": model, "task_type": task_type})
         if model == config.JUDGE_MODEL:
             return GatewayResult(self.judge_score, 0.0, 1, 1, model)
@@ -105,9 +107,7 @@ def test_curated_cycle_snapshot_is_illustrative_never_measured(tmp_path, monkeyp
     # And the written artifact on disk carries the illustrative tag too.
     import json
 
-    on_disk = json.loads(
-        (tmp_path / f"proof-snapshot-{fz.version}.json").read_text()
-    )
+    on_disk = json.loads((tmp_path / f"proof-snapshot-{fz.version}.json").read_text())
     assert on_disk["state"] == "illustrative"
     assert on_disk["state"] != "measured"
 

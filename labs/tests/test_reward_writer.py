@@ -51,27 +51,36 @@ def test_compute_emits_verify_rewards_independent_of_judge() -> None:
             "id": "c",
             "task_type": "extraction",
             "judge_score": 2,
+            # JSON was DEMANDED (response_format) + valid JSON → scored 1 (AIN-547)
+            "request_payload": {
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {"schema": {"type": "object"}},
+                }
+            },
             "response_payload": _resp(json.dumps({"k": 1})),
         },
     ]
     writes = compute_verify_rewards(rows)
     by_id = {w.outcome_id: w for w in writes}
-    # 'a' (valid python) and 'c' (valid json) get a verify reward
+    # 'a' (valid python) and 'c' (json demanded + valid) get a verify reward
     assert by_id["a"].reward == 1.0 and by_id["a"].reward_source == "verify"
     assert by_id["c"].reward == 1.0
     # 'b' deferred (no code block) — NOT emitted, keeps existing reward
     assert "b" not in by_id
 
 
-def test_deferred_rows_are_never_written() -> None:
+def test_prose_extraction_without_demand_defers_not_zero() -> None:
+    # AIN-547: a correct prose answer where JSON was NOT demanded must DEFER to the
+    # Council (reward None), never be written as a 0 — that was the constant-anchor
+    # bug that made anchor-κ a 0-by-construction artifact.
     rows = [
         {
             "id": "x",
             "task_type": "extraction",
             "judge_score": 4,
-            "response_payload": _resp("**not json**"),
+            "response_payload": _resp("The number extracted is 48291."),
         },
     ]
-    # '**not json**' is a json_parse_fail → reward 0.0 (a real verdict, emitted)
     writes = compute_verify_rewards(rows)
-    assert len(writes) == 1 and writes[0].reward == 0.0
+    assert writes == []

@@ -135,19 +135,24 @@ def quarantine_seats(
     result: AnchorKappaResult,
     *,
     min_anchor_accuracy: float = 0.5,
-    max_divergence: float = 0.4,
+    max_overconfidence: float = 0.4,
 ) -> list[str]:
-    """Seats to QUARANTINE (Step 4 / §3): a seat whose anchor-measured accuracy is
-    at/below chance, OR whose DS-predicted reliability diverges from its anchor
-    accuracy by more than ``max_divergence`` — i.e. the panel "trusts" it but the
-    verifiable truth says it's unreliable (correlated/over-confident error). DS
-    already down-weights softly; this is the hard anchor-validated filter."""
+    """Seats to QUARANTINE (Step 4 / §3). DIRECTIONAL — only drop a seat when it is
+    actually unreliable by the verifiable anchor:
+
+      1. anchor accuracy ≤ chance (below-chance → bad), OR
+      2. the panel OVER-trusts it: ``DS_reliability − anchor_accuracy >
+         max_overconfidence`` (DS thinks it's reliable but the anchor says it's
+         not — the dangerous correlated-error case §3 targets).
+
+    NOT the symmetric ``|DS − anchor|``: a GOOD seat that DS merely UNDER-rates
+    (high anchor accuracy, low DS because it abstains a lot) is harmless and must
+    be KEPT — quarantining it (the scale-run bug) throws away a reliable judge."""
     bad: set[str] = set()
     for seat, acc in result.per_seat_anchor_accuracy.items():
         if acc <= min_anchor_accuracy:
             bad.add(seat)
-    for seat, div in result.divergence.items():
-        if div > max_divergence:
+        elif result.ds_reliability.get(seat, 0.0) - acc > max_overconfidence:
             bad.add(seat)
     return sorted(bad)
 
@@ -200,7 +205,7 @@ def compute_anchor_kappa(
     gate: float = ANCHOR_KAPPA_GATE,
     reliability_filter: bool = True,
     min_anchor_accuracy: float = 0.5,
-    max_divergence: float = 0.4,
+    max_overconfidence: float = 0.4,
 ) -> AnchorKappaResult:
     """Run the Council on the verifiable pairs and score against verify(). With
     ``reliability_filter`` (Step 4): score once, quarantine anchor-unreliable seats,
@@ -224,7 +229,9 @@ def compute_anchor_kappa(
     if not reliability_filter:
         return first
     bad = quarantine_seats(
-        first, min_anchor_accuracy=min_anchor_accuracy, max_divergence=max_divergence
+        first,
+        min_anchor_accuracy=min_anchor_accuracy,
+        max_overconfidence=max_overconfidence,
     )
     if not bad:
         return first

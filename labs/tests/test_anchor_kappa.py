@@ -112,23 +112,37 @@ def test_anchor_pair_dataclass() -> None:
 # ── Step 4: seat reliability-filter (quarantine anchor-unreliable seats) ──────
 
 
-def test_quarantine_flags_below_chance_and_high_divergence() -> None:
+def test_quarantine_is_directional() -> None:
+    # DIRECTIONAL (scale-run fix): drop below-chance OR over-trusted seats; KEEP a
+    # good seat that DS merely under-rates (high anchor accuracy, low DS).
     from labs.anchor_kappa import AnchorKappaResult, quarantine_seats
 
     r = AnchorKappaResult(
         kappa=1.0,
-        n_pairs=6,
+        n_pairs=10,
         council_accuracy=1.0,
-        per_seat_anchor_accuracy={"good": 1.0, "belowchance": 0.3, "ok": 0.9},
-        ds_reliability={"good": 0.95, "belowchance": 0.4, "highdiv": 0.9},
-        divergence={"good": 0.05, "belowchance": 0.1, "highdiv": 0.6},
+        per_seat_anchor_accuracy={
+            "good": 1.0,
+            "underrated": 1.0,
+            "belowchance": 0.3,
+            "overconf": 0.55,
+        },
+        ds_reliability={
+            "good": 0.95,
+            "underrated": 0.05,
+            "belowchance": 0.4,
+            "overconf": 0.98,
+        },
+        divergence={},
         eligible=True,
-        max_divergence=0.6,
     )
-    bad = quarantine_seats(r, min_anchor_accuracy=0.5, max_divergence=0.4)
-    assert "belowchance" in bad  # anchor accuracy 0.3 ≤ chance
-    assert "highdiv" in bad  # DS↔anchor divergence 0.6 > 0.4
-    assert "good" not in bad and "ok" not in bad
+    bad = quarantine_seats(r, min_anchor_accuracy=0.5, max_overconfidence=0.4)
+    assert "belowchance" in bad  # anchor accuracy 0.3 ≤ chance → bad
+    assert "overconf" in bad  # DS 0.98 − anchor 0.55 = 0.43 > 0.4 → panel over-trusts
+    assert "good" not in bad
+    # the bug the scale run found: gemini was 100% anchor-accurate but DS-underrated,
+    # and the old |DS−anchor| filter wrongly quarantined it. Must be KEPT now.
+    assert "underrated" not in bad
 
 
 def _seat(persona, slug):

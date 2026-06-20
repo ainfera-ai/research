@@ -1,0 +1,197 @@
+"""AIN-542 Step 4 · anchor-κ — calibrate the Council against the verifiable anchor.
+
+The load-bearing mechanism that replaces human-gold. Run the Council on the
+VERIFIABLE subset (where `verify()` IS ground truth) and score its verdicts
+against `verify()`:
+
+    anchor-κ = Cohen's κ( Council label , verify-derived truth )   gate ≥ 0.60
+
+Also estimates per-seat anchor accuracy and flags **DS↔anchor divergence**: when
+a seat's Dawid–Skene-predicted reliability (from agreement alone) diverges from
+its anchor-measured accuracy, the seats' errors are correlated → consensus is
+untrustworthy in that region → quarantine. That is how "the Council agrees but is
+wrong" is caught with no human.
+
+Pure calibration. The live cross-family seat calls are the seam
+(`labs/seat_caller.gateway_seat_caller`); this module runs the Council via an
+injected `SeatCaller` and computes the metrics.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+from dataclasses import dataclass, field
+from itertools import groupby
+from typing import Any, Callable
+
+from labs.council import Vote, make_comparison, run_council
+from labs.council_seats import COUNCIL_SEATS, Seat
+
+SeatCaller = Callable[[Seat, str, str], str]
+
+ANCHOR_KAPPA_GATE = 0.60
+
+
+@dataclass(frozen=True)
+class AnchorPair:
+    """A verifiable A-vs-B item: two outputs for the same prompt whose verify()
+    rewards differ, so `truth` (the higher-verify output) is ground truth."""
+
+    item_id: str
+    output_a: str
+    output_b: str
+    family_a: str
+    family_b: str
+    truth: Vote  # Vote.A or Vote.B — which output verify() rates higher
+
+
+def build_pairs(rows: Sequence[dict[str, Any]]) -> list[AnchorPair]:
+    """Form ground-truth pairs from verifiable rows. Each row needs
+    ``{prompt_key, output_text, family, verify_reward}``. Within a prompt_key,
+    pair a verify=1 output with a verify=0 output; the winner's side ALTERNATES
+    (index parity, deterministic) so a position-biased Council can't score by
+    always picking A."""
+    pairs: list[AnchorPair] = []
+    idx = 0
+    keyed = sorted(rows, key=lambda r: str(r.get("prompt_key", "")))
+    for key, grp in groupby(keyed, key=lambda r: str(r.get("prompt_key", ""))):
+        group = list(grp)
+        wins = [r for r in group if float(r.get("verify_reward", 0)) >= 1.0]
+        losses = [r for r in group if float(r.get("verify_reward", 0)) <= 0.0]
+        for w, ll in zip(wins, losses):
+            iid = f"{key}:{idx}"
+            if idx % 2 == 0:  # winner = A
+                pairs.append(
+                    AnchorPair(
+                        iid,
+                        w["output_text"],
+                        ll["output_text"],
+                        w["family"],
+                        ll["family"],
+                        Vote.A,
+                    )
+                )
+            else:  # winner = B
+                pairs.append(
+                    AnchorPair(
+                        iid,
+                        ll["output_text"],
+                        w["output_text"],
+                        ll["family"],
+                        w["family"],
+                        Vote.B,
+                    )
+                )
+            idx += 1
+    return pairs
+
+
+def cohen_kappa(pairs: Sequence[tuple[Vote, Vote]]) -> float | None:
+    """Cohen's κ for two raters over paired categorical labels. None on empty;
+    1.0 on perfect single-label agreement (pe==1 treated as full agreement)."""
+    n = len(pairs)
+    if n == 0:
+        return None
+    labels = {a for a, _ in pairs} | {b for _, b in pairs}
+    po = sum(1 for a, b in pairs if a == b) / n
+    pe = 0.0
+    for lab in labels:
+        pa = sum(1 for a, _ in pairs if a == lab) / n
+        pb = sum(1 for _, b in pairs if b == lab) / n
+        pe += pa * pb
+    if pe >= 1.0:
+        return 1.0
+    return (po - pe) / (1 - pe)
+
+
+def ds_anchor_divergence(
+    ds_reliability: dict[str, float], anchor_accuracy: dict[str, float]
+) -> dict[str, float]:
+    """Per-seat |DS-predicted reliability − anchor-measured accuracy|. Large =
+    correlated error (DS overconfident vs reality) → quarantine that seat/region."""
+    return {
+        s: abs(ds_reliability.get(s, 0.0) - anchor_accuracy[s]) for s in anchor_accuracy
+    }
+
+
+@dataclass(frozen=True)
+class AnchorKappaResult:
+    kappa: float | None
+    n_pairs: int
+    council_accuracy: float
+    per_seat_anchor_accuracy: dict[str, float]
+    ds_reliability: dict[str, float]
+    divergence: dict[str, float]
+    eligible: bool  # kappa ≥ gate
+    max_divergence: float = field(default=0.0)
+
+
+def compute_anchor_kappa(
+    pairs: Sequence[AnchorPair],
+    seat_caller: SeatCaller,
+    seats: tuple[Seat, ...] = COUNCIL_SEATS,
+    *,
+    gate: float = ANCHOR_KAPPA_GATE,
+) -> AnchorKappaResult:
+    """Run the Council on the verifiable pairs and score against verify()."""
+    comparisons = [
+        make_comparison(
+            p.item_id,
+            p.output_a,
+            p.output_b,
+            p.family_a,
+            p.family_b,
+            seat_caller,
+            seats,
+        )
+        for p in pairs
+    ]
+    verdicts, ds = run_council(comparisons, seats)
+    truth = {p.item_id: p.truth for p in pairs}
+
+    decided = [
+        (v.label, truth[v.item_id]) for v in verdicts if v.label in (Vote.A, Vote.B)
+    ]
+    kappa = cohen_kappa(decided)
+    accuracy = (sum(1 for a, b in decided if a == b) / len(decided)) if decided else 0.0
+
+    # per-seat anchor accuracy (only on decisive votes)
+    truth_by_iid = {p.item_id: p.truth for p in pairs}
+    seat_acc: dict[str, float] = {}
+    for seat in seats:
+        hits = tot = 0
+        for comp in comparisons:
+            vote = comp.seat_votes.get(seat.persona)
+            if vote in (Vote.A, Vote.B):
+                tot += 1
+                hits += int(vote == truth_by_iid[comp.item_id])
+        if tot:
+            seat_acc[seat.persona] = hits / tot
+
+    divergence = ds_anchor_divergence(ds.reliability, seat_acc)
+    return AnchorKappaResult(
+        kappa=kappa,
+        n_pairs=len(pairs),
+        council_accuracy=round(accuracy, 4),
+        per_seat_anchor_accuracy={s: round(a, 4) for s, a in seat_acc.items()},
+        ds_reliability={s: round(r, 4) for s, r in ds.reliability.items()},
+        divergence={s: round(d, 4) for s, d in divergence.items()},
+        eligible=(kappa is not None and kappa >= gate),
+        max_divergence=round(max(divergence.values()), 4) if divergence else 0.0,
+    )
+
+
+# Pull the verifiable subset (already verify-scored by Step 2c) for pairing.
+# prompt_key groups outputs to the same task; the runner binds %(days)s.
+ANCHOR_PAIRS_SQL = (
+    "SELECT ro.id, ro.task_type, ro.chosen_model_slug, ro.reward AS verify_reward, "
+    "       md5(i.request_payload::text) AS prompt_key, "
+    "       COALESCE(i.response_payload #>> '{choices,0,message,content}', "
+    "                i.response_payload #>> '{content,0,text}') AS output_text "
+    "FROM routing_outcomes ro "
+    "JOIN inferences i ON i.id = ro.inference_id "
+    "WHERE ro.reward_source = 'verify' "
+    "  AND NOT ro.exclude_from_training "
+    "  AND ro.created_at >= now() - (%(days)s || ' days')::interval "
+    "ORDER BY prompt_key"
+)

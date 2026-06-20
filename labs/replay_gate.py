@@ -25,18 +25,26 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from dataclasses import dataclass, field
 from typing import Any
+
+from labs.dr_ope import OPEResult
 
 log = logging.getLogger(__name__)
 
 
 # Frozen thresholds — Discipline #12. Changing requires founder GO + Tulkas co-sign.
-MIN_DELTA_PCT = 0.5            # ≥ +0.5 percentage points
-MAX_CELL_REGRESS_PCT = -2.0    # any cell ≤ -2% → HOLD
-EXPLORATION_FLOOR_PCT = 0.05   # ≥5% on every cell
+MIN_DELTA_PCT = 0.5  # ≥ +0.5 percentage points
+MAX_CELL_REGRESS_PCT = -2.0  # any cell ≤ -2% → HOLD
+EXPLORATION_FLOOR_PCT = 0.05  # ≥5% on every cell
 MIN_SAMPLE_PER_CELL = 30
+
+# AIN-542 — OPTIONAL 5th guard (the quantitative half). When the caller supplies a
+# DR-OPE result, PROMOTE additionally requires the doubly-robust lift to be confidently
+# positive (CI lower bound > 0) on a non-degenerate importance-weight base. This can only
+# make the gate STRICTER (never promotes anything the frozen 4 would have held), and is
+# inert when no DR-OPE result is passed — so the frozen criterion is untouched.
+MIN_DR_OPE_ESS_RATIO = 0.10  # ESS must be ≥ 10% of n (else weights are degenerate)
 
 
 @dataclass(frozen=True)
@@ -51,7 +59,7 @@ class CellDelta:
 
 @dataclass(frozen=True)
 class ReplayVerdict:
-    decision: str                       # "PROMOTE" | "HOLD"
+    decision: str  # "PROMOTE" | "HOLD"
     incumbent_version: str
     candidate_version: str
     overall_delta_pct: float
@@ -60,41 +68,60 @@ class ReplayVerdict:
     guard_exploration_floor: bool
     guard_min_sample: bool
     cells: list[CellDelta] = field(default_factory=list)
-    halted_reason: str | None = None    # which guard failed
+    halted_reason: str | None = None  # which guard failed
+    # AIN-542 optional DR-OPE guard — None when no DR-OPE result was supplied (the
+    # frozen 4-guard behaviour); a bool + the doubly-robust summary when it was.
+    guard_dr_ope: bool | None = None
+    dr_ope: OPEResult | None = None
 
     def to_json(self) -> str:
-        return json.dumps(
-            {
-                "decision": self.decision,
-                "incumbent_version": self.incumbent_version,
-                "candidate_version": self.candidate_version,
-                "overall_delta_pct": self.overall_delta_pct,
-                "guards": {
-                    "delta_met": self.guard_delta_met,
-                    "no_regression": self.guard_no_regression,
-                    "exploration_floor": self.guard_exploration_floor,
-                    "min_sample": self.guard_min_sample,
-                },
-                "halted_reason": self.halted_reason,
-                "cells": [c.__dict__ for c in self.cells],
-            },
-            indent=2,
-            sort_keys=True,
-        )
+        guards: dict[str, Any] = {
+            "delta_met": self.guard_delta_met,
+            "no_regression": self.guard_no_regression,
+            "exploration_floor": self.guard_exploration_floor,
+            "min_sample": self.guard_min_sample,
+        }
+        payload: dict[str, Any] = {
+            "decision": self.decision,
+            "incumbent_version": self.incumbent_version,
+            "candidate_version": self.candidate_version,
+            "overall_delta_pct": self.overall_delta_pct,
+            "guards": guards,
+            "halted_reason": self.halted_reason,
+            "cells": [c.__dict__ for c in self.cells],
+        }
+        # Append the DR-OPE block ONLY when the guard was evaluated, so a run without
+        # DR-OPE emits the exact v0 verdict schema.
+        if self.guard_dr_ope is not None and self.dr_ope is not None:
+            guards["dr_ope_positive"] = self.guard_dr_ope
+            payload["dr_ope"] = {
+                "lift": round(self.dr_ope.lift, 6),
+                "ci_low": round(self.dr_ope.ci_low, 6),
+                "ci_high": round(self.dr_ope.ci_high, 6),
+                "ess": round(self.dr_ope.ess, 2),
+                "n": self.dr_ope.n,
+            }
+        return json.dumps(payload, indent=2, sort_keys=True)
 
 
 def decide(
     *,
-    incumbent_cells: list[dict[str, Any]],   # per-cell done_and_cheaper_pct + n
+    incumbent_cells: list[dict[str, Any]],  # per-cell done_and_cheaper_pct + n
     candidate_cells: list[dict[str, Any]],
     incumbent_version: str,
     candidate_version: str,
+    dr_ope: OPEResult | None = None,
 ) -> ReplayVerdict:
     """Pure-function decision. Deterministic given the cell-level inputs.
 
     Real cell aggregation uses the CRN harness in `eval/replay.py`:
     same prompts → same response trajectories on both policies → honest
     delta. This function decides given the aggregated deltas.
+
+    AIN-542: when `dr_ope` (a doubly-robust off-policy estimate of the candidate
+    vs the logging policy) is supplied, PROMOTE additionally requires its lift CI
+    lower bound > 0 on a non-degenerate weight base (ESS ≥ 10%·n). Omitting it leaves
+    the frozen 4-guard criterion exactly as-is.
     """
     # Index by cell key for paired comparison
     inc_by_cell = {(c["task_type"], c["candidate"]): c for c in incumbent_cells}
@@ -109,8 +136,12 @@ def decide(
     n_below_floor = 0
 
     for key in all_keys:
-        inc = inc_by_cell.get(key, {"done_and_cheaper_pct": 0.0, "n_held_out": 0, "explore_pct": 0.0})
-        cand = cand_by_cell.get(key, {"done_and_cheaper_pct": 0.0, "n_held_out": 0, "explore_pct": 0.0})
+        inc = inc_by_cell.get(
+            key, {"done_and_cheaper_pct": 0.0, "n_held_out": 0, "explore_pct": 0.0}
+        )
+        cand = cand_by_cell.get(
+            key, {"done_and_cheaper_pct": 0.0, "n_held_out": 0, "explore_pct": 0.0}
+        )
         n = max(inc["n_held_out"], cand["n_held_out"])
         if n < MIN_SAMPLE_PER_CELL:
             n_undersize_cells += 1
@@ -136,7 +167,8 @@ def decide(
 
     overall_delta = (
         (weighted_cand_total - weighted_inc_total) / weight_total
-        if weight_total > 0 else 0.0
+        if weight_total > 0
+        else 0.0
     )
 
     # Evaluate the 4 guards (Discipline #12 frozen).
@@ -145,9 +177,17 @@ def decide(
     guard_exploration_floor = n_below_floor == 0
     guard_min_sample = n_undersize_cells == 0
 
+    # Optional DR-OPE guard (AIN-542) — only evaluated when a result is supplied.
+    guard_dr_ope: bool | None = None
+    if dr_ope is not None:
+        ess_ok = dr_ope.ess >= MIN_DR_OPE_ESS_RATIO * dr_ope.n
+        guard_dr_ope = (dr_ope.ci_low > 0.0) and ess_ok
+
     halted_reason: str | None = None
     if not guard_delta_met:
-        halted_reason = f"delta_below_floor (got {overall_delta:.4f}pp, need ≥{MIN_DELTA_PCT}pp)"
+        halted_reason = (
+            f"delta_below_floor (got {overall_delta:.4f}pp, need ≥{MIN_DELTA_PCT}pp)"
+        )
     elif not guard_no_regression:
         regress_cells = [c for c in cell_deltas if c.delta_pct < MAX_CELL_REGRESS_PCT]
         halted_reason = f"regression_in_{len(regress_cells)}_cell(s)"
@@ -155,6 +195,13 @@ def decide(
         halted_reason = f"exploration_below_floor_in_{n_below_floor}_cell(s)"
     elif not guard_min_sample:
         halted_reason = f"undersize_sample_in_{n_undersize_cells}_cell(s)"
+    elif guard_dr_ope is False and dr_ope is not None:
+        if dr_ope.ci_low <= 0.0:
+            halted_reason = f"dr_ope_lift_ci_not_positive (ci_low={dr_ope.ci_low:.4f})"
+        else:
+            halted_reason = (
+                f"dr_ope_ess_degenerate (ess={dr_ope.ess:.1f}, n={dr_ope.n})"
+            )
 
     decision = "PROMOTE" if halted_reason is None else "HOLD"
 
@@ -169,4 +216,6 @@ def decide(
         guard_min_sample=guard_min_sample,
         halted_reason=halted_reason,
         cells=cell_deltas,
+        guard_dr_ope=guard_dr_ope,
+        dr_ope=dr_ope,
     )

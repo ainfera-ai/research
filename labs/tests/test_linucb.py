@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from labs.linucb_refit import fit, CellEstimate
+from labs.linucb_refit import fit
 
 
 FIXTURES = Path(__file__).parent / "fixtures"

@@ -39,7 +39,7 @@ def _rows():
     return rows
 
 
-def _competent(seat, first, second):
+def _competent(seat, task, first, second):
     # a competent judge agrees with verify(): prefers the GOOD output
     if "GOOD" in first and "GOOD" not in second:
         return "first"
@@ -48,7 +48,7 @@ def _competent(seat, first, second):
     return "tie"
 
 
-def _always_first(seat, first, second):
+def _always_first(seat, task, first, second):
     return "first"
 
 

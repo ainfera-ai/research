@@ -52,10 +52,10 @@ class _FakeClient:
 def test_gateway_seat_caller_parses_and_abstains() -> None:
     seat = COUNCIL_SEATS[0]
     ok = gateway_seat_caller(_FakeClient("SECOND"))
-    assert ok(seat, "a", "b") == "second"
+    assert ok(seat, "T", "a", "b") == "second"
     # a flaky seat abstains, never crashes
     flaky = gateway_seat_caller(_FakeClient(raise_exc=True))
-    assert flaky(seat, "a", "b") == "tie"
+    assert flaky(seat, "T", "a", "b") == "tie"
 
 
 # ── AIN-546: retry/backoff + health_check (quarantine, don't silent-drop) ─────
@@ -78,7 +78,7 @@ def test_retry_recovers_after_transient_failure() -> None:
 
     c = _FlakyClient(fail_times=1)
     caller = gateway_seat_caller(c, retries=2, backoff_base=0.0)  # no sleep in tests
-    assert caller(COUNCIL_SEATS[0], "a", "b") in ("first", "second", "tie")
+    assert caller(COUNCIL_SEATS[0], "T", "a", "b") in ("first", "second", "tie")
     assert c.calls == 2  # failed once → retried → succeeded
 
 
@@ -91,3 +91,13 @@ def test_health_check_partitions_reachable_unreachable() -> None:
         _FlakyClient(fail_times=99), COUNCIL_SEATS[:2], retries=0
     )
     assert reach2 == [] and len(unreach2) == 2
+
+
+def test_pairwise_messages_include_the_task() -> None:
+    from labs.seat_caller import build_pairwise_messages
+
+    msgs = build_pairwise_messages(
+        "Extract the order number", "48291", "The number is 48291"
+    )
+    user = msgs[-1]["content"]
+    assert "Extract the order number" in user and "TASK" in user

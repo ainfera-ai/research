@@ -107,3 +107,62 @@ def test_gate_constant_and_sql_shape() -> None:
 def test_anchor_pair_dataclass() -> None:
     p = AnchorPair("i", "a", "b", "openai", "google", Vote.A)
     assert p.truth is Vote.A and p.family_a == "openai"
+
+
+# ── Step 4: seat reliability-filter (quarantine anchor-unreliable seats) ──────
+
+
+def test_quarantine_flags_below_chance_and_high_divergence() -> None:
+    from labs.anchor_kappa import AnchorKappaResult, quarantine_seats
+
+    r = AnchorKappaResult(
+        kappa=1.0,
+        n_pairs=6,
+        council_accuracy=1.0,
+        per_seat_anchor_accuracy={"good": 1.0, "belowchance": 0.3, "ok": 0.9},
+        ds_reliability={"good": 0.95, "belowchance": 0.4, "highdiv": 0.9},
+        divergence={"good": 0.05, "belowchance": 0.1, "highdiv": 0.6},
+        eligible=True,
+        max_divergence=0.6,
+    )
+    bad = quarantine_seats(r, min_anchor_accuracy=0.5, max_divergence=0.4)
+    assert "belowchance" in bad  # anchor accuracy 0.3 ≤ chance
+    assert "highdiv" in bad  # DS↔anchor divergence 0.6 > 0.4
+    assert "good" not in bad and "ok" not in bad
+
+
+def _seat(persona, slug):
+    from labs.council_seats import Seat, family_of
+
+    return Seat(persona, slug, family_of(slug), True, "seat")
+
+
+def test_reliability_filter_quarantines_and_reaggregates() -> None:
+    from labs.anchor_kappa import AnchorPair, compute_anchor_kappa
+
+    roster = (
+        _seat("G", "gemini-3-1-pro"),
+        _seat("X", "grok-4"),
+        _seat("M", "minimax-m3-novita"),
+    )
+
+    def caller(seat, task, first, second):
+        gf = "GOOD" in first and "GOOD" not in second
+        gs = "GOOD" in second and "GOOD" not in first
+        if seat.persona == "M":  # the bad seat: always picks the WRONG one
+            return "second" if gf else ("first" if gs else "tie")
+        return "first" if gf else ("second" if gs else "tie")
+
+    # candidate families (openai/deepseek) disjoint from the roster → no exclusion
+    pairs = [
+        AnchorPair(f"p{i}", "GOOD", "BAD", "openai", "deepseek", Vote.A, "t")
+        if i % 2 == 0
+        else AnchorPair(f"p{i}", "BAD", "GOOD", "deepseek", "openai", Vote.B, "t")
+        for i in range(6)
+    ]
+    res = compute_anchor_kappa(pairs, caller, roster, reliability_filter=True)
+    assert "M" in res.quarantined_seats  # the anti-correlated seat is quarantined
+    assert (
+        "M" not in res.per_seat_anchor_accuracy
+    )  # and gone from the re-aggregated panel
+    assert res.kappa == 1.0 and res.eligible  # filtered panel agrees with the anchor

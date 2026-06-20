@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from itertools import groupby
 from typing import Any, Callable
 
-from labs.council import Vote, make_comparison, run_council
+from labs.council import Comparison, Vote, make_comparison, run_council
 from labs.council_seats import COUNCIL_SEATS, Seat
 
 SeatCaller = Callable[[Seat, str, str, str], str]
@@ -128,40 +128,45 @@ class AnchorKappaResult:
     divergence: dict[str, float]
     eligible: bool  # kappa ≥ gate
     max_divergence: float = field(default=0.0)
+    quarantined_seats: list[str] = field(default_factory=list)
 
 
-def compute_anchor_kappa(
-    pairs: Sequence[AnchorPair],
-    seat_caller: SeatCaller,
-    seats: tuple[Seat, ...] = COUNCIL_SEATS,
+def quarantine_seats(
+    result: AnchorKappaResult,
     *,
-    gate: float = ANCHOR_KAPPA_GATE,
+    min_anchor_accuracy: float = 0.5,
+    max_divergence: float = 0.4,
+) -> list[str]:
+    """Seats to QUARANTINE (Step 4 / §3): a seat whose anchor-measured accuracy is
+    at/below chance, OR whose DS-predicted reliability diverges from its anchor
+    accuracy by more than ``max_divergence`` — i.e. the panel "trusts" it but the
+    verifiable truth says it's unreliable (correlated/over-confident error). DS
+    already down-weights softly; this is the hard anchor-validated filter."""
+    bad: set[str] = set()
+    for seat, acc in result.per_seat_anchor_accuracy.items():
+        if acc <= min_anchor_accuracy:
+            bad.add(seat)
+    for seat, div in result.divergence.items():
+        if div > max_divergence:
+            bad.add(seat)
+    return sorted(bad)
+
+
+def _score(
+    comparisons: list[Comparison],
+    pairs: Sequence[AnchorPair],
+    seats: tuple[Seat, ...],
+    gate: float,
+    quarantined: list[str],
 ) -> AnchorKappaResult:
-    """Run the Council on the verifiable pairs and score against verify()."""
-    comparisons = [
-        make_comparison(
-            p.item_id,
-            p.task,
-            p.output_a,
-            p.output_b,
-            p.family_a,
-            p.family_b,
-            seat_caller,
-            seats,
-        )
-        for p in pairs
-    ]
     verdicts, ds = run_council(comparisons, seats)
     truth = {p.item_id: p.truth for p in pairs}
-
     decided = [
         (v.label, truth[v.item_id]) for v in verdicts if v.label in (Vote.A, Vote.B)
     ]
     kappa = cohen_kappa(decided)
     accuracy = (sum(1 for a, b in decided if a == b) / len(decided)) if decided else 0.0
 
-    # per-seat anchor accuracy (only on decisive votes)
-    truth_by_iid = {p.item_id: p.truth for p in pairs}
     seat_acc: dict[str, float] = {}
     for seat in seats:
         hits = tot = 0
@@ -169,7 +174,7 @@ def compute_anchor_kappa(
             vote = comp.seat_votes.get(seat.persona)
             if vote in (Vote.A, Vote.B):
                 tot += 1
-                hits += int(vote == truth_by_iid[comp.item_id])
+                hits += int(vote == truth[comp.item_id])
         if tot:
             seat_acc[seat.persona] = hits / tot
 
@@ -183,7 +188,60 @@ def compute_anchor_kappa(
         divergence={s: round(d, 4) for s, d in divergence.items()},
         eligible=(kappa is not None and kappa >= gate),
         max_divergence=round(max(divergence.values()), 4) if divergence else 0.0,
+        quarantined_seats=list(quarantined),
     )
+
+
+def compute_anchor_kappa(
+    pairs: Sequence[AnchorPair],
+    seat_caller: SeatCaller,
+    seats: tuple[Seat, ...] = COUNCIL_SEATS,
+    *,
+    gate: float = ANCHOR_KAPPA_GATE,
+    reliability_filter: bool = True,
+    min_anchor_accuracy: float = 0.5,
+    max_divergence: float = 0.4,
+) -> AnchorKappaResult:
+    """Run the Council on the verifiable pairs and score against verify(). With
+    ``reliability_filter`` (Step 4): score once, quarantine anchor-unreliable seats,
+    then RE-AGGREGATE without them (no new model calls — DS re-runs over the kept
+    votes). The returned result reflects the filtered panel + records who was
+    quarantined."""
+    comparisons = [
+        make_comparison(
+            p.item_id,
+            p.task,
+            p.output_a,
+            p.output_b,
+            p.family_a,
+            p.family_b,
+            seat_caller,
+            seats,
+        )
+        for p in pairs
+    ]
+    first = _score(comparisons, pairs, seats, gate, [])
+    if not reliability_filter:
+        return first
+    bad = quarantine_seats(
+        first, min_anchor_accuracy=min_anchor_accuracy, max_divergence=max_divergence
+    )
+    if not bad:
+        return first
+    # re-aggregate: drop the quarantined seats' votes + the seats from the panel
+    bad_set = set(bad)
+    filtered = [
+        Comparison(
+            c.item_id,
+            c.family_a,
+            c.family_b,
+            {p: v for p, v in c.seat_votes.items() if p not in bad_set},
+            c.excluded_seats,
+        )
+        for c in comparisons
+    ]
+    kept = tuple(s for s in seats if s.persona not in bad_set)
+    return _score(filtered, pairs, kept, gate, bad)
 
 
 # Pull the verifiable subset (already verify-scored by Step 2c) for pairing.

@@ -15,11 +15,16 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
+import time
 from typing import Any
 
-from labs.council_seats import Seat
+from labs.council_seats import Seat, family_of
 
 SeatCaller = Callable[[Seat, str, str], str]
+
+# Canonical slug→family map lives in council_seats now (AIN-546 single source of
+# truth). Re-exported here for back-compat with existing call sites.
+family_of_slug = family_of
 
 PAIRWISE_SYSTEM = (
     "You are an impartial evaluator. You are shown a task and two candidate "
@@ -63,52 +68,91 @@ def parse_pick(text: str | None) -> str:
     return "tie"
 
 
-def gateway_seat_caller(
-    client: Any, *, max_tokens: int = 8, temperature: float = 0.0
-) -> SeatCaller:
-    """Build a SeatCaller over an OpenAI-compatible `client` (e.g.
-    `openai.OpenAI(base_url=AINFERA_BASE_URL, api_key=...)`). On any error the
-    seat abstains (returns 'tie') so one flaky seat never crashes a verdict."""
-
-    def call(seat: Seat, first: str, second: str) -> str:
+def _complete_with_retry(
+    client: Any,
+    model: str,
+    messages: list[dict[str, str]],
+    *,
+    max_tokens: int,
+    temperature: float,
+    retries: int,
+    backoff_base: float,
+) -> Any:
+    """One completion with retry + exponential backoff on transient errors (the
+    gateway 502s seen live). Raises the last error once retries are exhausted."""
+    last: Exception | None = None
+    for attempt in range(retries + 1):
         try:
-            resp = client.chat.completions.create(
-                model=seat.model_slug,
-                messages=build_pairwise_messages(first, second),
+            return client.chat.completions.create(
+                model=model,
+                messages=messages,
                 max_tokens=max_tokens,
                 temperature=temperature,
             )
+        except Exception as exc:  # noqa: BLE001
+            last = exc
+            if attempt < retries and backoff_base > 0:
+                time.sleep(backoff_base * (2**attempt))
+    raise last if last else RuntimeError("completion failed")
+
+
+def gateway_seat_caller(
+    client: Any,
+    *,
+    max_tokens: int = 8,
+    temperature: float = 0.0,
+    retries: int = 2,
+    backoff_base: float = 0.5,
+) -> SeatCaller:
+    """Build a SeatCaller over an OpenAI-compatible `client`. Retries transient
+    failures with backoff; if a seat is still unreachable after retries it
+    abstains ('tie') so one flaky seat never crashes a verdict. Run `health_check`
+    first to QUARANTINE persistently-down seats (don't let an outage masquerade
+    as a tie — AIN-546)."""
+
+    def call(seat: Seat, first: str, second: str) -> str:
+        try:
+            resp = _complete_with_retry(
+                client,
+                seat.model_slug,
+                build_pairwise_messages(first, second),
+                max_tokens=max_tokens,
+                temperature=temperature,
+                retries=retries,
+                backoff_base=backoff_base,
+            )
             return parse_pick(resp.choices[0].message.content)
-        except Exception:  # noqa: BLE001 — a flaky seat abstains, never crashes
+        except Exception:  # noqa: BLE001 — exhausted retries → abstain
             return "tie"
 
     return call
 
 
-# slug → maker family, for mapping candidate-output models to the self-preference
-# exclusion key. Substring match, most-specific first; unknown → 'unknown'.
-_FAMILY_BY_SUBSTR: tuple[tuple[str, str], ...] = (
-    ("claude", "anthropic"),
-    ("gpt", "openai"),
-    ("gemini", "google"),
-    ("grok", "xai"),
-    ("llama", "meta"),
-    ("mistral", "mistral"),
-    ("mixtral", "mistral"),
-    ("qwen", "alibaba"),
-    ("deepseek", "deepseek"),
-    ("minimax", "minimax"),
-    ("glm", "zai"),
-    ("nemotron", "nvidia"),
-    ("mimo", "xiaomi"),
-    ("phi", "microsoft"),
-    ("ernie", "baidu"),
-)
-
-
-def family_of_slug(slug: str | None) -> str:
-    s = (slug or "").lower()
-    for sub, fam in _FAMILY_BY_SUBSTR:
-        if sub in s:
-            return fam
-    return "unknown"
+def health_check(
+    client: Any,
+    seats: tuple[Seat, ...],
+    *,
+    retries: int = 1,
+    backoff_base: float = 0.5,
+) -> tuple[list[Seat], list[Seat]]:
+    """Probe each seat once (with retry) → ``(reachable, unreachable)``. The
+    caller runs the Council on the reachable set and RECORDS the unreachable ones
+    on each verdict so a degraded roster is visible, never silently dropped."""
+    ping = [{"role": "user", "content": "Reply one word: ok"}]
+    reachable: list[Seat] = []
+    unreachable: list[Seat] = []
+    for seat in seats:
+        try:
+            _complete_with_retry(
+                client,
+                seat.model_slug,
+                ping,
+                max_tokens=4,
+                temperature=0.0,
+                retries=retries,
+                backoff_base=backoff_base,
+            )
+            reachable.append(seat)
+        except Exception:  # noqa: BLE001
+            unreachable.append(seat)
+    return reachable, unreachable

@@ -148,3 +148,22 @@ def test_live_roster_smoke() -> None:
     verdicts, _ = run_council([comp], COUNCIL_SEATS)
     assert verdicts[0].n_seats == 3
     assert isinstance(verdicts[0].label, Vote)
+
+
+# ── AIN-546: degraded-roster visibility ──────────────────────────────────────
+
+
+def test_verdict_records_unreachable_and_flags_degraded() -> None:
+    comps = [
+        _comp(
+            "u1",
+            {"Námo": Vote.A, "Manwë": Vote.A, "Tulkas": Vote.A},
+            ["Aulë", "Yavanna"],
+        )
+    ]
+    verdicts, _ = run_council(comps, unreachable_seats=("Vairë",))
+    v = verdicts[0]
+    assert v.unreachable_seats == ["Vairë"]
+    assert v.degraded is True  # an unreachable seat → flagged, never silently certified
+    # a full-floor verdict with no unreachable seats is NOT degraded
+    assert run_council(comps)[0][0].degraded is False

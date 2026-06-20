@@ -56,3 +56,38 @@ def test_gateway_seat_caller_parses_and_abstains() -> None:
     # a flaky seat abstains, never crashes
     flaky = gateway_seat_caller(_FakeClient(raise_exc=True))
     assert flaky(seat, "a", "b") == "tie"
+
+
+# ── AIN-546: retry/backoff + health_check (quarantine, don't silent-drop) ─────
+
+
+class _FlakyClient:
+    def __init__(self, fail_times=0, text="ok"):
+        self.fail_times, self.calls, self._text = fail_times, 0, text
+        self.chat = type("Chat", (), {"completions": self})()
+
+    def create(self, **kwargs):
+        self.calls += 1
+        if self.calls <= self.fail_times:
+            raise RuntimeError("502")
+        return _FakeResp(self._text)
+
+
+def test_retry_recovers_after_transient_failure() -> None:
+    from labs.seat_caller import gateway_seat_caller
+
+    c = _FlakyClient(fail_times=1)
+    caller = gateway_seat_caller(c, retries=2, backoff_base=0.0)  # no sleep in tests
+    assert caller(COUNCIL_SEATS[0], "a", "b") in ("first", "second", "tie")
+    assert c.calls == 2  # failed once → retried → succeeded
+
+
+def test_health_check_partitions_reachable_unreachable() -> None:
+    from labs.seat_caller import health_check
+
+    reach, unreach = health_check(_FakeClient(text="ok"), COUNCIL_SEATS[:2], retries=0)
+    assert len(reach) == 2 and unreach == []
+    reach2, unreach2 = health_check(
+        _FlakyClient(fail_times=99), COUNCIL_SEATS[:2], retries=0
+    )
+    assert reach2 == [] and len(unreach2) == 2

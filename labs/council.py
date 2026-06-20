@@ -207,11 +207,19 @@ class CouncilVerdict:
     n_families: int
     excluded_seats: list[str]
     seat_votes: dict[str, Vote]
+    unreachable_seats: list[str] = field(default_factory=list)
 
     @property
     def meets_floor(self) -> bool:
         """Step 3 acceptance: ≥3 seats from ≥2 families on this verdict."""
         return self.n_seats >= 3 and self.n_families >= 2
+
+    @property
+    def degraded(self) -> bool:
+        """FLAG (don't certify): the floor wasn't met and/or seats were
+        unreachable this run. A degraded roster must be VISIBLE — an outage must
+        never silently pass as a certified verdict (AIN-546)."""
+        return (not self.meets_floor) or bool(self.unreachable_seats)
 
 
 def _entropy(probs: dict[Vote, float]) -> float:
@@ -227,13 +235,17 @@ def run_council(
     seats: tuple[Seat, ...] = COUNCIL_SEATS,
     *,
     dispersion_tier_c: float = 0.85,
+    unreachable_seats: tuple[str, ...] = (),
 ) -> tuple[list[CouncilVerdict], DSResult]:
     """Aggregate a BATCH of comparisons: DS over the whole batch (so confusion
     matrices are estimable), then per-item verdict records. Returns the verdicts
-    + the DS result (per-seat reliability for the batch)."""
+    + the DS result (per-seat reliability for the batch). ``unreachable_seats``
+    (from a health_check) is stamped on every verdict so a degraded roster is
+    visible and floor-violations are flagged, not silently certified."""
     votes = {c.item_id: c.seat_votes for c in comparisons if c.seat_votes}
     ds = dawid_skene(votes) if votes else DSResult({}, {}, {}, {}, [], VOTE_CLASSES)
     persona_family = {s.persona: s.family for s in seats}
+    unreachable = list(unreachable_seats)
     verdicts: list[CouncilVerdict] = []
     for c in comparisons:
         probs = ds.label_probs.get(c.item_id, {})
@@ -250,6 +262,7 @@ def run_council(
                 n_families=len(fams),
                 excluded_seats=c.excluded_seats,
                 seat_votes=c.seat_votes,
+                unreachable_seats=unreachable,
             )
         )
     return verdicts, ds

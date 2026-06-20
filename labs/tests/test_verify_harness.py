@@ -53,43 +53,126 @@ def test_code_no_block_defers() -> None:
 # ── extraction / schema (intrinsic) ──────────────────────────────────────────
 
 
-def test_extraction_valid_json_scores_1() -> None:
-    resp = _anthropic_text(json.dumps({"name": "Ada", "age": 36}))
-    r = verify(VerifySample("extraction", response_payload=resp))
-    assert r.reward == 1.0
-
-
-def test_extraction_non_json_scores_0() -> None:
-    resp = _anthropic_text("The name is Ada and she is 36.")
-    r = verify(VerifySample("extraction", response_payload=resp))
-    assert r.reward == 0.0
-
-
-def test_extraction_schema_missing_required_key_scores_0() -> None:
-    req = {
+def _json_req() -> dict:
+    return {
         "response_format": {
             "type": "json_schema",
             "json_schema": {"schema": {"type": "object", "required": ["name", "age"]}},
         }
     }
-    resp = _anthropic_text(json.dumps({"name": "Ada"}))  # missing age
-    r = verify(VerifySample("extraction", request_payload=req, response_payload=resp))
+
+
+# ── AIN-547 regression set: correctness over format ──────────────────────────
+
+
+def test_correct_prose_when_json_not_demanded_scores_above_zero() -> None:
+    # the κ-fix core: a correct answer must NOT be penalised for being prose when
+    # JSON was never demanded (needs gold to judge correctness).
+    resp = _anthropic_text("The name is Ada and she is 36.")
+    r = verify(VerifySample("extraction", response_payload=resp, expected="Ada"))
+    assert r.reward is not None and r.reward > 0
+
+
+def test_structured_demanded_valid_json_scores_1() -> None:
+    resp = _anthropic_text(json.dumps({"name": "Ada", "age": 36}))
+    r = verify(
+        VerifySample("extraction", request_payload=_json_req(), response_payload=resp)
+    )
+    assert r.reward == 1.0
+
+
+def test_structured_demanded_prose_only_scores_0() -> None:
+    resp = _anthropic_text("The name is Ada and she is 36.")  # prose, but JSON demanded
+    r = verify(
+        VerifySample("extraction", request_payload=_json_req(), response_payload=resp)
+    )
+    assert r.reward == 0.0
+
+
+def test_extraction_no_demand_no_gold_defers_not_zero() -> None:
+    # NOT a constant 0: unverifiable without a structure-demand or gold → Council
+    r = verify(
+        VerifySample("extraction", response_payload=_anthropic_text("The name is Ada."))
+    )
+    assert r.reward is None and r.reward_source == ""
+    # and a bare JSON value without demand/gold is ALSO not a free 1 anymore
+    r2 = verify(VerifySample("extraction", response_payload=_anthropic_text("48291")))
+    assert r2.reward is None
+
+
+def test_extraction_schema_missing_required_key_scores_0() -> None:
+    resp = _anthropic_text(json.dumps({"name": "Ada"}))  # missing age, schema demanded
+    r = verify(
+        VerifySample("extraction", request_payload=_json_req(), response_payload=resp)
+    )
     assert r.reward == 0.0 and any("missing_keys" in e for e in r.evidence)
+
+
+# ── AIN-547 sibling audit: other verifiers are correctness-over-format ────────
+
+
+def test_audit_code_scores_correct_code_amid_prose() -> None:
+    # code verifier extracts the fenced block — surrounding prose doesn't change it
+    resp = _anthropic_text(
+        "Sure! Here's the function:\n```python\ndef f(): return 1\n```\nHope that helps."
+    )
+    assert verify(VerifySample("code", response_payload=resp)).reward == 1.0
+    # and it DEFERS (not 0) when there's no code block — never penalises a non-miss
+    assert (
+        verify(
+            VerifySample("code", response_payload=_anthropic_text("Could you clarify?"))
+        ).reward
+        is None
+    )
+
+
+def test_audit_answer_numeric_is_format_robust() -> None:
+    for got in ("42", "42.0", "$42", "The answer is 42.", "= 42"):
+        r = verify(
+            VerifySample(
+                "reasoning", response_payload=_anthropic_text(got), expected=42
+            )
+        )
+        assert r.reward == 1.0, got
 
 
 # ── tool_use (intrinsic, partial) ────────────────────────────────────────────
 
 
 def test_tool_wellformed_call_scores_1() -> None:
-    req = {"tools": [{"function": {"name": "get_weather", "parameters": {"type": "object", "required": ["city"]}}}]}
-    resp = _openai(tool_calls=[{"function": {"name": "get_weather", "arguments": json.dumps({"city": "Jakarta"})}}])
+    req = {
+        "tools": [
+            {
+                "function": {
+                    "name": "get_weather",
+                    "parameters": {"type": "object", "required": ["city"]},
+                }
+            }
+        ]
+    }
+    resp = _openai(
+        tool_calls=[
+            {
+                "function": {
+                    "name": "get_weather",
+                    "arguments": json.dumps({"city": "Jakarta"}),
+                }
+            }
+        ]
+    )
     r = verify(VerifySample("tool_use", request_payload=req, response_payload=resp))
     assert r.reward == 1.0
 
 
 def test_tool_unknown_name_scores_0() -> None:
-    req = {"tools": [{"function": {"name": "get_weather", "parameters": {"type": "object"}}}]}
-    resp = _openai(tool_calls=[{"function": {"name": "launch_rocket", "arguments": "{}"}}])
+    req = {
+        "tools": [
+            {"function": {"name": "get_weather", "parameters": {"type": "object"}}}
+        ]
+    }
+    resp = _openai(
+        tool_calls=[{"function": {"name": "launch_rocket", "arguments": "{}"}}]
+    )
     r = verify(VerifySample("tool_use", request_payload=req, response_payload=resp))
     assert r.reward == 0.0
 

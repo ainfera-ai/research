@@ -62,16 +62,18 @@ class VerifySample:
 
 @dataclass(frozen=True)
 class VerifyResult:
-    reward: float | None          # [0,1]; None = unverifiable → defer to Council
-    reward_source: str            # 'verify' iff reward is not None, else ''
-    verifier: str                 # family that ran (or 'none')
-    mode: str                     # 'intrinsic' | 'reference' | 'none'
-    verifiable: bool              # did a verifier produce a reward (reward is not None)
-    detail: str                   # short human reason
+    reward: float | None  # [0,1]; None = unverifiable → defer to Council
+    reward_source: str  # 'verify' iff reward is not None, else ''
+    verifier: str  # family that ran (or 'none')
+    mode: str  # 'intrinsic' | 'reference' | 'none'
+    verifiable: bool  # did a verifier produce a reward (reward is not None)
+    detail: str  # short human reason
     evidence: tuple[str, ...] = field(default_factory=tuple)
 
 
-def _ok(reward: float, family: str, mode: str, detail: str, evidence: tuple[str, ...]) -> VerifyResult:
+def _ok(
+    reward: float, family: str, mode: str, detail: str, evidence: tuple[str, ...]
+) -> VerifyResult:
     return VerifyResult(
         reward=float(reward),
         reward_source=REWARD_SOURCE_VERIFY,
@@ -83,7 +85,9 @@ def _ok(reward: float, family: str, mode: str, detail: str, evidence: tuple[str,
     )
 
 
-def _defer(family: str, mode: str, detail: str, evidence: tuple[str, ...] = ()) -> VerifyResult:
+def _defer(
+    family: str, mode: str, detail: str, evidence: tuple[str, ...] = ()
+) -> VerifyResult:
     """Unverifiable → Tier B. reward=None, reward_source='' (never 'verify')."""
     return VerifyResult(
         reward=None,
@@ -145,17 +149,31 @@ def extract_tool_calls(response: dict[str, Any] | None) -> list[dict[str, Any]]:
                     args = json.loads(args)
                 except (ValueError, TypeError):
                     args = None
-            out.append({"name": fn.get("name"), "arguments": args, "args_raw": fn.get("arguments")})
+            out.append(
+                {
+                    "name": fn.get("name"),
+                    "arguments": args,
+                    "args_raw": fn.get("arguments"),
+                }
+            )
     # Anthropic: content[].type == 'tool_use' {name, input(dict)}
     content = response.get("content")
     if isinstance(content, list):
         for block in content:
             if isinstance(block, dict) and block.get("type") == "tool_use":
-                out.append({"name": block.get("name"), "arguments": block.get("input"), "args_raw": block.get("input")})
+                out.append(
+                    {
+                        "name": block.get("name"),
+                        "arguments": block.get("input"),
+                        "args_raw": block.get("input"),
+                    }
+                )
     return out
 
 
-def extract_request_tool_schemas(request: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
+def extract_request_tool_schemas(
+    request: dict[str, Any] | None,
+) -> dict[str, dict[str, Any]]:
     """Map tool name -> JSON-schema of its arguments, across request shapes."""
     if not isinstance(request, dict):
         return {}
@@ -171,7 +189,9 @@ def extract_request_tool_schemas(request: dict[str, Any] | None) -> dict[str, di
     return schemas
 
 
-def extract_request_json_schema(request: dict[str, Any] | None) -> dict[str, Any] | None:
+def extract_request_json_schema(
+    request: dict[str, Any] | None,
+) -> dict[str, Any] | None:
     """Pull a response_format json_schema if the request asked for one."""
     if not isinstance(request, dict):
         return None
@@ -258,27 +278,104 @@ def verify_code(sample: VerifySample) -> VerifyResult:
             ok = _brackets_balanced(code)
             all_ok = all_ok and ok
             ev.append(f"block{i}:{lang}:brackets={'ok' if ok else 'fail'}(heuristic)")
-    return _ok(1.0 if all_ok else 0.0, FAMILY_CODE, "intrinsic", "code_parse", tuple(ev))
+    return _ok(
+        1.0 if all_ok else 0.0, FAMILY_CODE, "intrinsic", "code_parse", tuple(ev)
+    )
+
+
+_STRUCT_DEMAND = re.compile(
+    r"\bjson\b|structured output|response_format|\bschema\b", re.IGNORECASE
+)
+
+
+def _request_text(request: dict[str, Any] | None) -> str:
+    if not isinstance(request, dict):
+        return ""
+    parts: list[str] = []
+    sysm = request.get("system")
+    if isinstance(sysm, str):
+        parts.append(sysm)
+    for m in request.get("messages", []) or []:
+        c = m.get("content") if isinstance(m, dict) else None
+        if isinstance(c, str):
+            parts.append(c)
+        elif isinstance(c, list):
+            for b in c:
+                if isinstance(b, dict) and b.get("type") in (None, "text"):
+                    parts.append(str(b.get("text", "")))
+    return " ".join(parts)
+
+
+def structure_demanded(request: dict[str, Any] | None) -> bool:
+    """True iff the request asked for structured/JSON output — an explicit
+    response_format json_schema, or a clear instruction in the prompt. This is the
+    gate for JSON-validity scoring: a correct PROSE answer to a request that never
+    asked for JSON is NOT wrong (the AIN-547 constant-anchor bug)."""
+    if extract_request_json_schema(request):
+        return True
+    return bool(_STRUCT_DEMAND.search(_request_text(request)))
+
+
+def _answer_present(text: str, expected: Any) -> bool:
+    """Answer-correctness, format-agnostic: the gold answer appears in the output
+    (numeric equivalence for numbers, normalized substring otherwise)."""
+    exp = str(expected).strip()
+    en = _to_number(exp)
+    if en is not None:
+        for tok in re.findall(r"-?\d[\d,]*\.?\d*", text):
+            tn = _to_number(tok)
+            if tn is not None and math.isclose(tn, en, rel_tol=1e-6, abs_tol=1e-9):
+                return True
+        return False
+    return _normalize(exp) in _normalize(text)
 
 
 def verify_schema(sample: VerifySample) -> VerifyResult:
-    """Intrinsic: is the structured output valid JSON, and (if the request asked
-    for a json_schema) does it structurally conform? An extraction task whose
-    output isn't parseable JSON scores 0."""
+    """Extraction/structured-output verifier (AIN-547 — correctness over format).
+
+    JSON-validity is the intrinsic check ONLY when structured output was demanded
+    (response_format json_schema, or an explicit prompt instruction). Otherwise
+    format is incidental: score answer-correctness against gold if present, else
+    DEFER to the Council — never penalise a correct prose answer for not being
+    JSON (the constant-anchor bug that made anchor-κ a 0-by-construction artifact)."""
     text = extract_output_text(sample.response_payload).strip()
     if not text:
         return _defer(FAMILY_SCHEMA, "intrinsic", "empty_output")
-    obj, why = _loads_lenient(text)
-    if obj is _SENTINEL:
-        return _ok(0.0, FAMILY_SCHEMA, "intrinsic", "json_parse_fail", (f"json={why}",))
-    ev = ["json=ok"]
-    schema = extract_request_json_schema(sample.request_payload)
-    if schema:
-        conforms, detail = _structural_conforms(obj, schema)
-        ev.append(f"schema={detail}")
-        return _ok(1.0 if conforms else 0.0, FAMILY_SCHEMA, "intrinsic", "json+schema", tuple(ev))
-    ev.append("schema=absent")
-    return _ok(1.0, FAMILY_SCHEMA, "intrinsic", "json_only", tuple(ev))
+    demanded = structure_demanded(sample.request_payload)
+    if demanded:
+        obj, why = _loads_lenient(text)
+        if obj is _SENTINEL:
+            return _ok(
+                0.0,
+                FAMILY_SCHEMA,
+                "intrinsic",
+                "structured_demanded:json_parse_fail",
+                (f"json={why}",),
+            )
+        schema = extract_request_json_schema(sample.request_payload)
+        if schema:
+            conforms, detail = _structural_conforms(obj, schema)
+            return _ok(
+                1.0 if conforms else 0.0,
+                FAMILY_SCHEMA,
+                "intrinsic",
+                "json+schema",
+                (f"schema={detail}",),
+            )
+        return _ok(
+            1.0, FAMILY_SCHEMA, "intrinsic", "structured_demanded:json_ok", ("json=ok",)
+        )
+    # structure NOT demanded → format is incidental
+    if sample.expected is not None:
+        ok = _answer_present(text, sample.expected)
+        return _ok(
+            1.0 if ok else 0.0,
+            FAMILY_SCHEMA,
+            "reference",
+            "answer_match",
+            (f"exp={str(sample.expected)[:24]}",),
+        )
+    return _defer(FAMILY_SCHEMA, "intrinsic", "no_structure_demand_no_gold")
 
 
 def verify_tool(sample: VerifySample) -> VerifyResult:
@@ -303,8 +400,12 @@ def verify_tool(sample: VerifySample) -> VerifyResult:
             args_ok = conforms
         ok = bool(name_ok and args_ok)
         all_ok = all_ok and ok
-        ev.append(f"call{i}:name={'ok' if name_ok else 'unknown'}:args={detail if args_ok else 'fail'}")
-    return _ok(1.0 if all_ok else 0.0, FAMILY_TOOL, "intrinsic", "tool_wellformed", tuple(ev))
+        ev.append(
+            f"call{i}:name={'ok' if name_ok else 'unknown'}:args={detail if args_ok else 'fail'}"
+        )
+    return _ok(
+        1.0 if all_ok else 0.0, FAMILY_TOOL, "intrinsic", "tool_wellformed", tuple(ev)
+    )
 
 
 def verify_answer(sample: VerifySample) -> VerifyResult:
@@ -320,9 +421,21 @@ def verify_answer(sample: VerifySample) -> VerifyResult:
     gn, en = _to_number(got), _to_number(exp)
     if gn is not None and en is not None:
         ok = math.isclose(gn, en, rel_tol=1e-6, abs_tol=1e-9)
-        return _ok(1.0 if ok else 0.0, FAMILY_ANSWER, "reference", "numeric", (f"got={got}", f"exp={exp}"))
+        return _ok(
+            1.0 if ok else 0.0,
+            FAMILY_ANSWER,
+            "reference",
+            "numeric",
+            (f"got={got}", f"exp={exp}"),
+        )
     ok = _normalize(got) == _normalize(exp)
-    return _ok(1.0 if ok else 0.0, FAMILY_ANSWER, "reference", "exact", (f"got={got[:40]}", f"exp={exp[:40]}"))
+    return _ok(
+        1.0 if ok else 0.0,
+        FAMILY_ANSWER,
+        "reference",
+        "exact",
+        (f"got={got[:40]}", f"exp={exp[:40]}"),
+    )
 
 
 def verify_sql(sample: VerifySample) -> VerifyResult:
@@ -430,7 +543,9 @@ def _normalize(s: str) -> str:
 # ── sizing: verifiable vs subjective % of traffic ────────────────────────────
 
 
-def verifiability_histogram(task_types: Iterable[str | None]) -> dict[str, dict[str, float]]:
+def verifiability_histogram(
+    task_types: Iterable[str | None],
+) -> dict[str, dict[str, float]]:
     """Bucket task_types into {verifiable, partial, subjective} with count + pct.
     The Step 1 'size the anchor' deliverable, pure twin of the sizing SQL."""
     counts = {t.value: 0 for t in Verifiability}

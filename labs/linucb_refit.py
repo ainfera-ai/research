@@ -48,6 +48,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable
 
+from labs.shrinkage import shrinkage_posterior
+
 log = logging.getLogger(__name__)
 
 
@@ -59,6 +61,12 @@ class CellEstimate:
     n_labeled: int
     ucb: float
     explore_pct: float
+    # D1 shrinkage audit (AIN-542): the benchmark prior blended in, and the fraction
+    # of q_empirical it still contributes (decays with n). None/0.0 when shrinkage is
+    # off (prior_strength=0) — see _cell_json, which omits them so the v0 artifact is
+    # byte-identical.
+    q_prior: float | None = None
+    prior_weight: float = 0.0
 
 
 @dataclass
@@ -78,11 +86,29 @@ class PolicyCandidate:
                 "input_corpus": self.input_corpus,
                 "exploration_floor_pct": self.exploration_floor_pct,
                 "alpha": self.alpha,
-                "cells": [c.__dict__ for c in self.cells],
+                "cells": [_cell_json(c) for c in self.cells],
             },
             indent=2,
             sort_keys=True,
         )
+
+
+def _cell_json(c: CellEstimate) -> dict[str, Any]:
+    """Serialise a cell. The D1 shrinkage fields (q_prior, prior_weight) appear ONLY
+    when shrinkage was active for the cell, so a no-shrinkage refit emits the exact
+    v0 schema → CRN replay across the cutover stays byte-identical."""
+    d: dict[str, Any] = {
+        "task_type": c.task_type,
+        "candidate": c.candidate,
+        "q_empirical": c.q_empirical,
+        "n_labeled": c.n_labeled,
+        "ucb": c.ucb,
+        "explore_pct": c.explore_pct,
+    }
+    if c.q_prior is not None:
+        d["q_prior"] = c.q_prior
+        d["prior_weight"] = c.prior_weight
+    return d
 
 
 def fit(
@@ -93,6 +119,8 @@ def fit(
     exploration_floor_pct: float = 0.05,
     today: datetime | None = None,
     reward_fn: Callable[[dict[str, Any]], float] | None = None,
+    priors: dict[str, float] | None = None,
+    prior_strength: float = 0.0,
 ) -> PolicyCandidate:
     """Pure-function LinUCB refit. Deterministic given (rows, seed, alpha).
 
@@ -102,6 +130,12 @@ def fit(
     (``(judge_score-1)/4``) for backward compatibility. The judge-FREE path
     (``labeled_corpus.assemble_corpus``) pre-computes a ``reward`` field and
     passes ``reward_fn=lambda r: r["reward"]`` so no judge label is required.
+
+    D1 shrinkage (AIN-542): when ``prior_strength > 0`` and ``priors`` carries a
+    benchmark q_prior for a candidate, that cell's ``q_empirical`` becomes the
+    empirical-Bayes posterior ``(prior_strength·prior + Σreward)/(prior_strength+n)``
+    instead of the raw mean — the prior decays as labeled evidence accrues. Default
+    ``prior_strength=0`` ⇒ raw mean ⇒ byte-identical to v0.
     """
     if reward_fn is None:
         reward_fn = lambda r: (r["judge_score"] - 1.0) / 4.0  # noqa: E731
@@ -121,9 +155,21 @@ def fit(
     t = max(1, sum(c["n"] for c in cells.values()))
 
     estimates: list[CellEstimate] = []
+    priors = priors or {}
     for (tt, cand), c in sorted(cells.items()):
         n = max(1, int(c["n"]))
-        q = c["reward_sum"] / n
+        # D1 shrinkage: blend the benchmark prior with the empirical mean (the prior
+        # decays as n grows). Active only when prior_strength>0 AND this candidate has
+        # a prior — otherwise prior_strength=0 ⇒ q = raw mean (v0, byte-identical).
+        prior_for_cell = priors.get(cand) if prior_strength > 0 else None
+        ps = prior_strength if prior_for_cell is not None else 0.0
+        est = shrinkage_posterior(
+            prior_for_cell if prior_for_cell is not None else 0.0,
+            c["reward_sum"],
+            n,
+            prior_strength=ps,
+        )
+        q = est.q_posterior
         ucb = q + alpha * math.sqrt(math.log(t) / n)
         # Exploration floor: every cell gets at least floor_pct allocation.
         # The actual sampling is the gateway router's job; this just
@@ -137,6 +183,12 @@ def fit(
                 n_labeled=int(c["n"]),
                 ucb=round(ucb, 6),
                 explore_pct=round(explore_pct, 6),
+                q_prior=round(prior_for_cell, 6)
+                if prior_for_cell is not None
+                else None,
+                prior_weight=round(est.prior_weight, 6)
+                if prior_for_cell is not None
+                else 0.0,
             )
         )
 

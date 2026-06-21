@@ -106,6 +106,55 @@ def test_hold_on_undersize_cell():
     assert not v.guard_min_sample
 
 
+def test_well_sampled_regression_still_holds_as_regression():
+    """The fix must NOT weaken real regression detection: a well-sampled (n>=30) cell that
+    drops past -2pp is still a `regression`, not relabeled."""
+    incumbent = [_cell("code", "opus", 60.0, n=100), _cell("chat", "gpt", 70.0, n=100)]
+    candidate = [_cell("code", "opus", 80.0, n=100), _cell("chat", "gpt", 66.0, n=100)]  # -4pp
+    v = decide(
+        incumbent_cells=incumbent,
+        candidate_cells=candidate,
+        incumbent_version="v1",
+        candidate_version="v2",
+    )
+    assert v.decision == "HOLD"
+    assert not v.guard_no_regression
+    assert "regression" in v.halted_reason
+
+
+def test_undersize_regressed_cell_is_not_reported_as_regression():
+    """AIN replay-gate diagnosis — the parked mistral-large-3 case. A candidate with strong,
+    well-sampled gains on its real cells plus ONE thin degenerate cell (the `embed` artifact:
+    n=4, ~0% done-and-cheaper vs a non-zero incumbent) was reported as
+    `regression_in_1_cell(s)`. The thin cell is too thin to judge: it must not count as a
+    quality regression. The decision stays HOLD (the min-sample guard still catches it), but
+    the honest reason is `undersize_sample`, never `regression`."""
+    incumbent = [
+        _cell("general", "mistral-large-3", 60.9, n=177),
+        _cell("reasoning", "mistral-large-3", 53.1, n=866),
+        _cell("embed", "mistral-large-3", 50.0, n=4),  # thin incumbent
+    ]
+    candidate = [
+        _cell("general", "mistral-large-3", 83.0, n=177),  # +22pp, well-sampled
+        _cell("reasoning", "mistral-large-3", 91.6, n=866),  # +38pp, well-sampled
+        _cell("embed", "mistral-large-3", 0.0, n=4),  # -50pp but n=4 < 30 → too thin to judge
+    ]
+    v = decide(
+        incumbent_cells=incumbent,
+        candidate_cells=candidate,
+        incumbent_version="v_inc",
+        candidate_version="v_cand",
+    )
+    # decision-safe: still HELD (never auto-promoted on a thin cell)…
+    assert v.decision == "HOLD"
+    # …but the thin cell no longer trips no_regression, and the reason is now honest.
+    assert v.guard_no_regression is True
+    assert not v.guard_min_sample
+    assert v.halted_reason is not None
+    assert "undersize_sample" in v.halted_reason
+    assert "regression" not in v.halted_reason
+
+
 def test_thresholds_frozen():
     """Discipline #12 — these constants are moat lock. Changing requires
     founder + Tulkas co-sign. This test fails if they drift."""

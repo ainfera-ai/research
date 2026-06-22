@@ -48,7 +48,28 @@ def test_assemble_maps_fields_and_drops_textless_rows():
     corpus = lc.assemble_corpus(rows)
     assert len(corpus) == 2
     assert {c["chosen_candidate"] for c in corpus} == {"a", "b"}
-    assert corpus[0] == {"task_type": "chat", "chosen_candidate": "a", "reward": 1.0}
+    assert corpus[0] == {
+        "task_type": "chat",
+        "cell": "chat:unknown:unknown",  # AIN-602 model-free cell; unknown tenant/preset
+        "chosen_candidate": "a",
+        "reward": 1.0,
+    }
+
+
+def test_model_free_cell_derivation():
+    # AIN-602: cell = task_type:tenant:preset; preset = 3rd ':'-segment of routing_outcomes.cell
+    assert (
+        lc.model_free_cell(
+            {"task_type": "chat", "tenant_id": "t1", "routing_cell": "chat:band:fast"}
+        )
+        == "chat:t1:fast"
+    )
+    # missing tenant/preset → 'unknown' (never fabricated)
+    assert lc.model_free_cell({"task_type": "code"}) == "code:unknown:unknown"
+    assert (
+        lc.model_free_cell({"task_type": "code", "tenant_id": "t2", "routing_cell": "code:band:"})
+        == "code:t2:unknown"
+    )
 
 
 # ── judge-free refit path through fit() ──────────────────────────────────────
@@ -66,6 +87,27 @@ def test_fit_uses_judge_free_reward_without_judge_score():
     cells = {(c.task_type, c.candidate): c for c in policy.cells}
     assert cells[("chat", "a")].q_empirical == 1.0  # 2/2 succeeded
     assert cells[("code", "b")].q_empirical == 0.0  # 0/1 succeeded
+
+
+def test_fit_groups_by_model_free_cell_not_task_type():
+    # Same task_type + same model, but two different tenants ⇒ two model-free cells,
+    # each its own estimate (the MODEL is the arm; the cell is task:tenant:preset).
+    rows = [
+        {"task_type": "chat", "tenant_id": "t1", "routing_cell": "chat:b:fast",
+         "chosen_candidate": "m", "outcome_status": "succeeded", "cost_actual_usd": 0.01,
+         "reward": 0.7, "has_text": True},
+        {"task_type": "chat", "tenant_id": "t2", "routing_cell": "chat:b:fast",
+         "chosen_candidate": "m", "outcome_status": "failed_other", "cost_actual_usd": 0.01,
+         "reward": 0.7, "has_text": True},
+    ]
+    corpus = lc.assemble_corpus(rows)
+    policy = fit(corpus, reward_fn=lambda r: r["reward"], seed=1)
+    by_cell = {c.cell: c for c in policy.cells}
+    assert set(by_cell) == {"chat:t1:fast", "chat:t2:fast"}  # split by tenant
+    assert by_cell["chat:t1:fast"].q_empirical == 1.0  # succeeded
+    assert by_cell["chat:t2:fast"].q_empirical == 0.0  # failed
+    # the artifact carries the model-free cell (it differs from task_type)
+    assert '"cell": "chat:t1:fast"' in policy.to_json()
 
 
 def test_backward_compatible_judge_mapping_still_works():

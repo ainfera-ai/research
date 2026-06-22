@@ -41,6 +41,7 @@ RewardFn = Callable[[dict[str, Any]], float]
 # by :days (rolling window). The runner binds %(days)s.
 LABELED_CORPUS_SQL = (
     "SELECT ro.id, ro.task_type, ro.chosen_model_slug AS chosen_candidate, "
+    "       ro.tenant_id, ro.cell AS routing_cell, "
     "       ro.outcome_status, ro.cost_actual_usd, ro.reward, "
     "       (i.request_payload IS NOT NULL AND i.response_payload IS NOT NULL) AS has_text "
     "FROM routing_outcomes ro "
@@ -51,6 +52,19 @@ LABELED_CORPUS_SQL = (
     "  AND ro.created_at >= now() - (%(days)s || ' days')::interval "
     "ORDER BY ro.created_at DESC"
 )
+
+
+def model_free_cell(row: dict[str, Any]) -> str:
+    """The canonical model-free context cell ``task_type:tenant_id:policy_preset``
+    (AIN-602; the MODEL is the arm, never part of the cell). Matches the labs/OPE
+    derivation: preset = the 3rd ``:``-segment of ``routing_outcomes.cell`` (the
+    column that already encodes the preset), 'unknown' when absent."""
+    task = row.get("task_type") or "unknown"
+    tenant = row.get("tenant_id")
+    tenant_s = str(tenant) if tenant is not None else "unknown"
+    segs = (row.get("routing_cell") or "").split(":")
+    preset = segs[2] if len(segs) >= 3 and segs[2] else "unknown"
+    return f"{task}:{tenant_s}:{preset}"
 
 
 def select_labeled_corpus_sql() -> str:
@@ -81,6 +95,7 @@ def assemble_corpus(
         out.append(
             {
                 "task_type": r["task_type"],
+                "cell": model_free_cell(r),
                 "chosen_candidate": r["chosen_candidate"],
                 "reward": reward_fn(r),
             }
@@ -134,6 +149,7 @@ def cost_aware_corpus(
         out.append(
             {
                 "task_type": r["task_type"],
+                "cell": model_free_cell(r),
                 "chosen_candidate": r["chosen_candidate"],
                 "reward": completion_reward(r) * (1.0 - norm_cost),
             }

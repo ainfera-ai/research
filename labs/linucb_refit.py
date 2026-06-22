@@ -71,9 +71,14 @@ class CellEstimate:
     q_prior: float | None = None
     prior_weight: float = 0.0
     # D7 Thompson allocation (AIN-542): this cell's exploration share within its
-    # task_type, from the posterior P[best] + a min-sample floor. None when Thompson
+    # cell, from the posterior P[best] + a min-sample floor. None when Thompson
     # is off — _cell_json omits it so the v0 artifact stays byte-identical.
     alloc_weight: float | None = None
+    # AIN-602/AIN-550: the model-free context cell ``task_type:tenant:preset`` this
+    # estimate competes in (the MODEL is the arm = ``candidate``). None for v0/legacy
+    # corpora (no `cell` field) ⇒ grouping falls back to task_type and _cell_json omits
+    # it, so a legacy refit stays byte-identical.
+    cell: str | None = None
 
 
 @dataclass
@@ -112,6 +117,8 @@ def _cell_json(c: CellEstimate) -> dict[str, Any]:
         "ucb": c.ucb,
         "explore_pct": c.explore_pct,
     }
+    if c.cell is not None and c.cell != c.task_type:
+        d["cell"] = c.cell
     if c.q_prior is not None:
         d["q_prior"] = c.q_prior
         d["prior_weight"] = c.prior_weight
@@ -153,11 +160,14 @@ def fit(
     rng = random.Random(seed)
     today = today or datetime.now(tz=timezone.utc)
 
-    # Aggregate per cell (task_type, candidate)
-    cells: dict[tuple[str, str], dict[str, float]] = {}
+    # Aggregate per (model-free cell, candidate). The cell defaults to task_type for
+    # v0/legacy corpora (no `cell` field) so those refits stay byte-identical; a
+    # model-free corpus (labeled_corpus) supplies `cell` = task_type:tenant:preset.
+    cells: dict[tuple[str, str], dict[str, Any]] = {}
     for row in labeled_rows:
-        key = (row["task_type"], row["chosen_candidate"])
-        c = cells.setdefault(key, {"n": 0, "reward_sum": 0.0})
+        cell_key = row.get("cell") or row["task_type"]
+        key = (cell_key, row["chosen_candidate"])
+        c = cells.setdefault(key, {"n": 0, "reward_sum": 0.0, "task_type": row["task_type"]})
         c["n"] += 1
         c["reward_sum"] += reward_fn(row)
 
@@ -165,7 +175,7 @@ def fit(
 
     estimates: list[CellEstimate] = []
     priors = priors or {}
-    for (tt, cand), c in sorted(cells.items()):
+    for (cell_key, cand), c in sorted(cells.items()):
         n = max(1, int(c["n"]))
         # D1 shrinkage: blend the benchmark prior with the empirical mean (the prior
         # decays as n grows). Active only when prior_strength>0 AND this candidate has
@@ -186,8 +196,9 @@ def fit(
         explore_pct = max(exploration_floor_pct, 1.0 / (n + 1))
         estimates.append(
             CellEstimate(
-                task_type=tt,
+                task_type=c["task_type"],
                 candidate=cand,
+                cell=cell_key,
                 q_empirical=round(q, 6),
                 n_labeled=int(c["n"]),
                 ucb=round(ucb, 6),
@@ -244,12 +255,12 @@ def apply_thompson_allocation(
     if seed is None:
         seed = int(os.environ.get("LABS_CRN_SEED", "20260528"))
 
-    by_task: dict[str, list[CellEstimate]] = {}
+    by_cell: dict[str, list[CellEstimate]] = {}
     for c in policy.cells:
-        by_task.setdefault(c.task_type, []).append(c)
+        by_cell.setdefault(c.cell or c.task_type, []).append(c)
 
     alloc_by_cell: dict[tuple[str, str], float] = {}
-    for task_offset, (tt, group) in enumerate(sorted(by_task.items())):
+    for cell_offset, (cell_key, group) in enumerate(sorted(by_cell.items())):
         posteriors: list[Posterior] = []
         n_by: dict[str, int] = {}
         for c in group:
@@ -258,16 +269,16 @@ def apply_thompson_allocation(
             beta = max((1.0 - c.q_empirical) * sn, 1e-9)
             posteriors.append(Posterior(c.candidate, alpha, beta, c.n_labeled))
             n_by[c.candidate] = c.n_labeled
-        # distinct per-task seed so independent task_types don't share a draw stream
-        probs = thompson_probabilities(posteriors, draws=draws, seed=seed + task_offset)
+        # distinct per-cell seed so independent cells don't share a draw stream
+        probs = thompson_probabilities(posteriors, draws=draws, seed=seed + cell_offset)
         alloc = allocate_with_floor(
             probs, n_by, min_samples=min_samples, floor_pct=floor_pct
         )
         for c in group:
-            alloc_by_cell[(tt, c.candidate)] = alloc[c.candidate]
+            alloc_by_cell[(cell_key, c.candidate)] = alloc[c.candidate]
 
     new_cells = [
-        replace(c, alloc_weight=round(alloc_by_cell[(c.task_type, c.candidate)], 6))
+        replace(c, alloc_weight=round(alloc_by_cell[(c.cell or c.task_type, c.candidate)], 6))
         for c in policy.cells
     ]
     return replace(policy, cells=new_cells)

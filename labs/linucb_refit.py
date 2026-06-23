@@ -79,6 +79,12 @@ class CellEstimate:
     # corpora (no `cell` field) ⇒ grouping falls back to task_type and _cell_json omits
     # it, so a legacy refit stays byte-identical.
     cell: str | None = None
+    # AIN-550 part 2: p95 SLO audit. p95_latency_ms None ⇒ no latency data (the SLO term was
+    # not applied; _cell_json omits all three → v0 byte-identical). slo_breach ⇒ q_empirical
+    # was penalised by LABS_SLO_PENALTY.
+    p95_latency_ms: float | None = None
+    slo_ms: float | None = None
+    slo_breach: bool = False
 
 
 @dataclass
@@ -124,7 +130,61 @@ def _cell_json(c: CellEstimate) -> dict[str, Any]:
         d["prior_weight"] = c.prior_weight
     if c.alloc_weight is not None:
         d["alloc_weight"] = c.alloc_weight
+    if c.p95_latency_ms is not None:  # AIN-550 part 2 — latency data present this refit
+        d["p95_latency_ms"] = c.p95_latency_ms
+        d["slo_ms"] = c.slo_ms
+        d["slo_breach"] = c.slo_breach
     return d
+
+
+# AIN-550 part 2 · p95-latency SLO per preset (the model-free cell's 3rd ':'-segment =
+# constraint_band). A cell whose p95 observed latency breaches its preset SLO has its refit
+# objective (q_empirical) penalised, so the router deprioritises chronically-slow arms
+# (gpt-5-5 at ~41s was chosen heavily with latency absent from the utility). Defaults in ms;
+# override per preset via LABS_SLO_MS_<PRESET> and the penalty via LABS_SLO_PENALTY.
+_SLO_MS_BY_PRESET: dict[str, float] = {
+    "latency": 5000.0,
+    "strict": 10000.0,
+    "balanced": 15000.0,
+    "weighted": 15000.0,
+    "quality": 30000.0,
+    "cost": 30000.0,
+}
+_DEFAULT_SLO_PENALTY = 0.5  # multiplicative: q *= (1 - penalty) when the SLO is breached
+
+
+def _slo_ms_for_cell(cell: str) -> float | None:
+    """p95 SLO (ms) for a model-free cell's preset (3rd ':'-segment), env-overridable. None
+    for legacy task-only cells or unknown presets ⇒ no SLO term (v0 byte-identical)."""
+    parts = cell.split(":")
+    if len(parts) < 3 or not parts[2]:
+        return None
+    preset = parts[2]
+    raw = os.environ.get(f"LABS_SLO_MS_{preset.upper()}", "").strip()
+    if raw:
+        try:
+            return float(raw)
+        except ValueError:
+            pass
+    return _SLO_MS_BY_PRESET.get(preset)
+
+
+def _p95(values: list[float]) -> float | None:
+    """Nearest-rank p95 of a non-empty list, else None."""
+    if not values:
+        return None
+    s = sorted(values)
+    idx = max(0, min(len(s) - 1, math.ceil(0.95 * len(s)) - 1))
+    return s[idx]
+
+
+def _slo_penalty() -> float:
+    raw = os.environ.get("LABS_SLO_PENALTY", "").strip()
+    try:
+        p = float(raw) if raw else _DEFAULT_SLO_PENALTY
+    except ValueError:
+        p = _DEFAULT_SLO_PENALTY
+    return min(max(p, 0.0), 1.0)
 
 
 def fit(
@@ -167,9 +227,14 @@ def fit(
     for row in labeled_rows:
         cell_key = row.get("cell") or row["task_type"]
         key = (cell_key, row["chosen_candidate"])
-        c = cells.setdefault(key, {"n": 0, "reward_sum": 0.0, "task_type": row["task_type"]})
+        c = cells.setdefault(
+            key, {"n": 0, "reward_sum": 0.0, "task_type": row["task_type"], "latencies": []}
+        )
         c["n"] += 1
         c["reward_sum"] += reward_fn(row)
+        lat = row.get("latency_ms")
+        if lat is not None:
+            c["latencies"].append(float(lat))
 
     t = max(1, sum(c["n"] for c in cells.values()))
 
@@ -189,6 +254,13 @@ def fit(
             prior_strength=ps,
         )
         q = est.q_posterior
+        # AIN-550 part 2 · p95-SLO term: a cell whose p95 observed latency breaches its
+        # preset SLO has its objective q penalised, so slow arms rank lower.
+        p95 = _p95(c.get("latencies", []))
+        slo = _slo_ms_for_cell(cell_key)
+        slo_breach = p95 is not None and slo is not None and p95 > slo
+        if slo_breach:
+            q = q * (1.0 - _slo_penalty())
         ucb = q + alpha * math.sqrt(math.log(t) / n)
         # Exploration floor: every cell gets at least floor_pct allocation.
         # The actual sampling is the gateway router's job; this just
@@ -209,6 +281,9 @@ def fit(
                 prior_weight=round(est.prior_weight, 6)
                 if prior_for_cell is not None
                 else 0.0,
+                p95_latency_ms=round(p95, 1) if p95 is not None else None,
+                slo_ms=slo,
+                slo_breach=slo_breach,
             )
         )
 

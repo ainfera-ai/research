@@ -53,6 +53,7 @@ def test_assemble_maps_fields_and_drops_textless_rows():
         "cell": "chat:unknown:unknown",  # AIN-602 model-free cell; unknown tenant/preset
         "chosen_candidate": "a",
         "reward": 1.0,
+        "latency_ms": None,  # AIN-550 part 2; _row has no observed_latency_ms
     }
 
 
@@ -108,6 +109,37 @@ def test_fit_groups_by_model_free_cell_not_task_type():
     assert by_cell["chat:t2:fast"].q_empirical == 0.0  # failed
     # the artifact carries the model-free cell (it differs from task_type)
     assert '"cell": "chat:t1:fast"' in policy.to_json()
+
+
+def test_slo_penalty_fires_on_p95_latency_breach(monkeypatch):
+    # AIN-550 part 2: preset 'latency' SLO = 5000ms. A slow arm (p95 6000 > 5000) is penalised;
+    # a fast arm in the same cell is not. Both have raw mean 0.9.
+    monkeypatch.setenv("LABS_SLO_PENALTY", "0.5")
+    rows = [
+        *[
+            {"task_type": "chat", "cell": "chat:t1:latency", "chosen_candidate": "slow",
+             "reward": 0.9, "latency_ms": 6000}
+            for _ in range(5)
+        ],
+        *[
+            {"task_type": "chat", "cell": "chat:t1:latency", "chosen_candidate": "fast",
+             "reward": 0.9, "latency_ms": 1000}
+            for _ in range(5)
+        ],
+    ]
+    by = {c.candidate: c for c in fit(rows, reward_fn=lambda r: r["reward"], seed=1).cells}
+    assert by["slow"].slo_breach is True and by["fast"].slo_breach is False
+    assert by["slow"].p95_latency_ms == 6000.0 and by["slow"].slo_ms == 5000.0
+    assert abs(by["fast"].q_empirical - 0.9) < 1e-9  # fast unpenalised
+    assert abs(by["slow"].q_empirical - 0.45) < 1e-9  # slow halved by the SLO penalty
+
+
+def test_no_latency_means_no_slo_term_byte_identical(monkeypatch):
+    # A corpus with no latency_ms emits none of the SLO audit fields (v0 byte-identical).
+    rows = [{"task_type": "chat", "cell": "chat:t1:latency", "chosen_candidate": "a", "reward": 0.8}]
+    pol = fit(rows, reward_fn=lambda r: r["reward"], seed=1)
+    assert pol.cells[0].p95_latency_ms is None and pol.cells[0].slo_breach is False
+    assert "slo_breach" not in pol.to_json()
 
 
 def test_backward_compatible_judge_mapping_still_works():

@@ -173,7 +173,20 @@ def decide(
 
     # Evaluate the 4 guards (Discipline #12 frozen).
     guard_delta_met = overall_delta >= MIN_DELTA_PCT
-    guard_no_regression = all(c.delta_pct >= MAX_CELL_REGRESS_PCT for c in cell_deltas)
+    # PROPOSED (AIN replay-gate diagnosis — needs founder GO + Tulkas co-sign): the
+    # no-regression guard must not count cells too thin to judge. A cell with
+    # n_held_out < MIN_SAMPLE_PER_CELL whose delta is noisy past -2pp was reported as a
+    # quality `regression_in_N_cell(s)` when its honest blocker is `undersize_sample` — the
+    # min-sample guard catches it, but is evaluated AFTER no_regression, so the misleading
+    # reason wins. Excluding undersize cells here is DECISION-SAFE: any cell dropped is, by
+    # definition (n < floor), still counted in n_undersize_cells, so guard_min_sample still
+    # HOLDs it — this can never flip a HOLD into a PROMOTE; it only corrects the reason.
+    # Real regressions on well-sampled (n >= floor) cells are unaffected.
+    guard_no_regression = all(
+        c.delta_pct >= MAX_CELL_REGRESS_PCT
+        for c in cell_deltas
+        if c.n_held_out >= MIN_SAMPLE_PER_CELL
+    )
     guard_exploration_floor = n_below_floor == 0
     guard_min_sample = n_undersize_cells == 0
 
@@ -189,7 +202,12 @@ def decide(
             f"delta_below_floor (got {overall_delta:.4f}pp, need ≥{MIN_DELTA_PCT}pp)"
         )
     elif not guard_no_regression:
-        regress_cells = [c for c in cell_deltas if c.delta_pct < MAX_CELL_REGRESS_PCT]
+        # count only well-sampled regressions (keep the reason consistent with the guard).
+        regress_cells = [
+            c
+            for c in cell_deltas
+            if c.delta_pct < MAX_CELL_REGRESS_PCT and c.n_held_out >= MIN_SAMPLE_PER_CELL
+        ]
         halted_reason = f"regression_in_{len(regress_cells)}_cell(s)"
     elif not guard_exploration_floor:
         halted_reason = f"exploration_below_floor_in_{n_below_floor}_cell(s)"

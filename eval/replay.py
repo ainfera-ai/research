@@ -7,7 +7,8 @@ the comparison between the static (q_prior) and learned policies as an
 illustration of the gate's decision rule: promote only on a measurable win that
 does not regress the quality bar.
 """
-import os, sys
+import os
+import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "benchmark"))
 import numpy as np
 from run_benchmark import run

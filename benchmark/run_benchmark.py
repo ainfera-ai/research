@@ -17,7 +17,10 @@ Key realism: the static catalog prior is IMPERFECT (systematic per-cell error).
 The learner's job is to beat the prior using real outcome labels -- the whole
 q_empirical thesis. Reward is a 1-5 judge label (simulated from latent + noise).
 """
-import json, os, math, random
+import json
+import os
+import math
+import random
 import numpy as np
 
 HERE = os.path.dirname(__file__)
@@ -65,7 +68,9 @@ class LinUCB:
         self.b = {a: np.zeros(self.d) for a in arms}
 
     def ctx(self, task):
-        v = np.zeros(self.d); v[self.tasks.index(task)] = 1.0; v[-1] = 1.0
+        v = np.zeros(self.d)
+        v[self.tasks.index(task)] = 1.0
+        v[-1] = 1.0
         return v
 
     def estimate(self, arm, x):
@@ -110,7 +115,8 @@ def run():
         def record(p, model):
             q = true_quality(latent, model, task, rng)
             c = all_in_cost(price[model], tok)
-            R[p]["q"].append(q); R[p]["cost"].append(c)
+            R[p]["q"].append(q)
+            R[p]["cost"].append(c)
             R[p]["complete"].append(1.0 if q >= COMPLETION_BAR else 0.0)
             done_cheaper = (q >= COMPLETION_BAR) and (c <= base_cost) and (q >= base_q - 0.25)
             R[p]["cheaper_and_done"].append(1.0 if done_cheaper else 0.0)
@@ -119,7 +125,8 @@ def run():
         record("agent_baseline", agent_default)
         record("single_best", strongest)
         record("cheapest", cheapest_model)
-        record("round_robin", models[rr % len(models)]); rr += 1
+        record("round_robin", models[rr % len(models)])
+        rr += 1
 
         sclear = [m for m in models if prior[m][task] >= bar]
         record("ainfera_static", min(sclear, key=lambda m: price[m]) if sclear else strongest)
@@ -154,7 +161,8 @@ def summarize(R, agent_default):
     print(f"\nRouting benchmark — {n} synthetic requests "
           f"(baseline = agent's own '{agent_default}')\n")
     hdr = f"{'policy':<16}{'qual':>6}{'done%':>8}{'cost':>8}{'save%':>8}{'done&cheaper%':>16}"
-    print(hdr); print("-"*len(hdr))
+    print(hdr)
+    print("-"*len(hdr))
     for p,q,comp,c,save,cad in rows:
         print(f"{p:<16}{q:>6.2f}{comp:>8.1f}{c:>8.2f}{save:>+8.1f}{cad:>16.1f}")
     print("\nReading it:")

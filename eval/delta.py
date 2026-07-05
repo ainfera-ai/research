@@ -5,7 +5,8 @@ This is the script behind the preprint headline number. It runs the benchmark on
 synthetic data and emits preprint/results.md. Swap the loader for a private,
 held-out labeled corpus to produce the REAL number (not in this repo).
 """
-import os, sys
+import os
+import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "benchmark"))
 import numpy as np
 from run_benchmark import run, summarize  # noqa

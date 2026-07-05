@@ -1,26 +1,38 @@
-# OS
-.DS_Store
-Thumbs.db
-
-# Editor
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
 # Python
 __pycache__/
 *.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.mypy_cache/
+.pytest_cache/
+.hypothesis/
+
+# Virtual env
 .venv/
 venv/
-.pytest_cache/
 
-# Generated datasets (regenerate via datasets/generate.py)
-datasets/synthetic_outcomes.jsonl
-datasets/catalog.json
+# IDE
+.vscode/
+.idea/
 
-# Local-only
-.env
-.env.local
-*.log
+# Test
+coverage.xml
+*.cover
+htmlcov/
+.tox/

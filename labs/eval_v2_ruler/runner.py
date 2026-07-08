@@ -63,12 +63,13 @@ def run_ruler(
     print(f"ruler: scoring {len(models)} models × {taskset.n} tasks "
           f"(cost cap ${config.COST_CAP_USD})", file=sys.stderr)
 
-    for i, model in enumerate(models):
-        if cumulative_cost > config.COST_CAP_USD:
-            print(f"ruler: COST CAP ${config.COST_CAP_USD} exceeded "
-                  f"(spent ${cumulative_cost:.2f}) — stopping", file=sys.stderr)
-            break
+    # Score models concurrently for throughput. Each model's 10 tasks
+    # run sequentially (to avoid one model hammering a single upstream),
+    # but multiple models score in parallel.
+    from concurrent.futures import ThreadPoolExecutor, as_completed
 
+    def _score_one(idx_model: tuple[int, CatalogModel]) -> tuple[int, ModelScore]:
+        idx, model = idx_model
         slug = model.slug
         task_scores: list[TaskScore] = []
         model_cost = 0.0
@@ -85,31 +86,53 @@ def run_ruler(
             ts = score_task(task, result)
             task_scores.append(ts)
 
-            # estimate cost
             if model.input_cost_per_million and model.output_cost_per_million:
                 model_cost += (
                     result.input_tokens * model.input_cost_per_million / 1_000_000
                     + result.output_tokens * model.output_cost_per_million / 1_000_000
                 )
 
-            # G3: brief sleep to avoid rate limits
             time.sleep(0.1)
 
-        cumulative_cost += model_cost
         ms = score_model(slug, task_scores, cost_usd=model_cost)
-        all_scores.append(ms)
-        if ms.overall_pass:
-            n_passed += 1
+        return idx, ms
 
-        status = "PASS" if ms.overall_pass else "FAIL"
-        print(f"  [{i+1}/{len(models)}] {slug:40s} {status}  "
-              f"G1={ms.g1_score:.2f} G2={ms.g2_score:.2f} "
-              f"G3={ms.g3_score:.0f}ms G4={ms.g4_score:.0f}tok  "
-              f"${model_cost:.4f}  cumul=${cumulative_cost:.2f}",
-              file=sys.stderr)
+    workers = min(config.CONCURRENCY, len(models))
+    indexed = list(enumerate(models))
 
-        if ms.n_successes == 0 and all(t.error for t in task_scores):
-            errors.append(f"{slug}: all tasks errored")
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(_score_one, im): im for im in indexed}
+        done_count = 0
+
+        for future in as_completed(futures):
+            idx, model = futures[future]
+            i, ms = future.result()
+            done_count += 1
+
+            # accumulate cost
+            model_cost = ms.total_cost_usd
+            cumulative_cost += model_cost
+            all_scores.append(ms)
+            if ms.overall_pass:
+                n_passed += 1
+
+            if ms.n_successes == 0 and all(
+                t.error for t in ms.task_scores
+            ):
+                errors.append(f"{model.slug}: all tasks errored")
+
+            status = "PASS" if ms.overall_pass else "FAIL"
+            print(f"  [{done_count}/{len(models)}] {model.slug:40s} {status}  "
+                  f"G1={ms.g1_score:.2f} G2={ms.g2_score:.2f} "
+                  f"G3={ms.g3_score:.0f}ms G4={ms.g4_score:.0f}tok  "
+                  f"${model_cost:.4f}  cumul=${cumulative_cost:.2f}",
+                  file=sys.stderr)
+
+            if cumulative_cost > config.COST_CAP_USD:
+                print(f"ruler: COST CAP ${config.COST_CAP_USD} exceeded "
+                      f"(spent ${cumulative_cost:.2f}) — stopping pending tasks",
+                      file=sys.stderr)
+                break
 
     # Sort: passing models first, then by G2 score descending
     all_scores.sort(key=lambda s: (not s.overall_pass, -s.g2_score))

@@ -132,6 +132,112 @@ def gateway_seat_caller(
     return call
 
 
+# ── AIN-542 · ainfera SDK-native seat caller (live api.ainfera.ai) ────────────
+#
+# The gateway_seat_caller above expects an OpenAI-compatible client (chat.completions.create).
+# The ainfera SDK uses agent.inference(model=, messages=) which returns an InferenceResponse
+# with .content (not .choices[0].message.content). This ainfera_seat_caller bridges that
+# seam directly — no OpenAI shim needed.
+#
+# Council seats call PINNED model slugs (not ainfera-inference auto-route), so each seat
+# call is a direct provider dispatch with no routing_outcomes row — consistent with the
+# eval-harness L2 exclusion (pinned arms write no routing_outcomes row).
+
+
+def _ainfera_inference_with_retry(
+    agent: Any,
+    model: str,
+    messages: list[dict[str, str]],
+    *,
+    max_tokens: int,
+    retries: int,
+    backoff_base: float,
+) -> str:
+    """One ainfera SDK inference call with retry + exponential backoff. Returns
+    the response content string. Raises the last error once retries are exhausted."""
+    last: Exception | None = None
+    for attempt in range(retries + 1):
+        try:
+            resp = agent.inference(
+                model=model,
+                messages=messages,
+                max_tokens=max_tokens,
+            )
+            return resp.content
+        except Exception as exc:  # noqa: BLE001
+            last = exc
+            if attempt < retries and backoff_base > 0:
+                time.sleep(backoff_base * (2**attempt))
+    raise last if last else RuntimeError("ainfera inference failed")
+
+
+def ainfera_seat_caller(
+    agent: Any,
+    *,
+    max_tokens: int = 8,
+    retries: int = 2,
+    backoff_base: float = 0.5,
+) -> SeatCaller:
+    """Build a SeatCaller over the ainfera SDK ``agent`` (live api.ainfera.ai).
+
+    Calls ``agent.inference(model=seat.model_slug, messages=..., max_tokens=...)``
+    for each pairwise judgment. Retries transient failures with backoff; if a seat
+    is still unreachable after retries it abstains ('tie') so one flaky seat never
+    crashes a verdict. Run ``ainfera_health_check`` first to QUARANTINE
+    persistently-down seats (don't let an outage masquerade as a tie — AIN-546).
+
+    The ``agent`` is an ainfera SDK Agent (from ``client.agents.retrieve(agent_id=...)``
+    or ``client.agents.signup(...)``). It must be bound to a client with the fleet key.
+    """
+
+    def call(seat: Seat, task: str, first: str, second: str) -> str:
+        try:
+            content = _ainfera_inference_with_retry(
+                agent,
+                seat.model_slug,
+                build_pairwise_messages(task, first, second),
+                max_tokens=max_tokens,
+                retries=retries,
+                backoff_base=backoff_base,
+            )
+            return parse_pick(content)
+        except Exception:  # noqa: BLE001 — exhausted retries → abstain
+            return "tie"
+
+    return call
+
+
+def ainfera_health_check(
+    agent: Any,
+    seats: tuple[Seat, ...],
+    *,
+    retries: int = 1,
+    backoff_base: float = 0.5,
+) -> tuple[list[Seat], list[Seat]]:
+    """Probe each seat once (with retry) via the ainfera SDK → ``(reachable, unreachable)``.
+
+    The caller runs the Council on the reachable set and RECORDS the unreachable ones
+    on each verdict so a degraded roster is visible, never silently dropped.
+    """
+    ping = [{"role": "user", "content": "Reply one word: ok"}]
+    reachable: list[Seat] = []
+    unreachable: list[Seat] = []
+    for seat in seats:
+        try:
+            _ainfera_inference_with_retry(
+                agent,
+                seat.model_slug,
+                ping,
+                max_tokens=4,
+                retries=retries,
+                backoff_base=backoff_base,
+            )
+            reachable.append(seat)
+        except Exception:  # noqa: BLE001
+            unreachable.append(seat)
+    return reachable, unreachable
+
+
 def health_check(
     client: Any,
     seats: tuple[Seat, ...],

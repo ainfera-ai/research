@@ -39,7 +39,7 @@ def test_make_comparison_cancels_a_pure_position_bias() -> None:
     assert set(comp.seat_votes.values()) == {Vote.TIE}
     # anthropic + openai seats excluded by family rule
     assert set(comp.excluded_seats) == {"Námo", "Manwë"}
-    assert len(comp.seat_votes) == 3
+    assert len(comp.seat_votes) == 4  # 6 seats − 2 excluded families = 4
 
 
 def test_make_comparison_consistent_preference() -> None:
@@ -49,7 +49,7 @@ def test_make_comparison_consistent_preference() -> None:
     comp = make_comparison(
         "i1", "T", "a-longer-output", "short", "google", "meta", prefer_longer
     )
-    # google + meta excluded → anthropic/openai/xai remain, all prefer A
+    # google + meta excluded → anthropic/openai/xai/mistral remain, all prefer A
     assert set(comp.excluded_seats) == {"Aulë", "Yavanna"}
     assert set(comp.seat_votes.values()) == {Vote.A}
 
@@ -150,7 +150,7 @@ def test_live_roster_smoke() -> None:
         "x", "T", "a", "b", "anthropic", "openai", caller, COUNCIL_SEATS
     )
     verdicts, _ = run_council([comp], COUNCIL_SEATS)
-    assert verdicts[0].n_seats == 3
+    assert verdicts[0].n_seats == 4  # 6 seats − 2 excluded families = 4
     assert isinstance(verdicts[0].label, Vote)
 
 

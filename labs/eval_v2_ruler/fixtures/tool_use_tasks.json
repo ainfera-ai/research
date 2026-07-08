@@ -1,0 +1,362 @@
+{
+  "version": "eval-v2-ruler-tool-use-v1",
+  "hash": "6f4595366e0301e78ac2a10e0a275d3dc8f8fa80f494a481a3560b61a25ec05c",
+  "note": "Curated synthetic tool-use task set for eval-v2 ruler. Author-written, public-safe. Does NOT derive from any customer traffic. Each task defines a tool schema and a prompt that requires a specific tool call. Used to score G1 (tool-call validity), G2 (correct tool selection + valid args), G3 (latency), G4 (cost efficiency).",
+  "tasks": [
+    {
+      "id": "ruler-tu-001",
+      "task_type": "tool_use",
+      "prompt": "What is the current weather in Jakarta?",
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "get_weather",
+            "description": "Get current weather for a city",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "city": {
+                  "type": "string",
+                  "description": "City name"
+                }
+              },
+              "required": [
+                "city"
+              ]
+            }
+          }
+        }
+      ],
+      "expected_tool": "get_weather",
+      "expected_args": {
+        "city": "Jakarta"
+      }
+    },
+    {
+      "id": "ruler-tu-002",
+      "task_type": "tool_use",
+      "prompt": "Search for articles about machine learning on arxiv published in 2024.",
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "search_arxiv",
+            "description": "Search arxiv for papers by keyword and year",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "keyword": {
+                  "type": "string"
+                },
+                "year": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "keyword"
+              ]
+            }
+          }
+        }
+      ],
+      "expected_tool": "search_arxiv",
+      "expected_args": {
+        "keyword": "machine learning",
+        "year": 2024
+      }
+    },
+    {
+      "id": "ruler-tu-003",
+      "task_type": "tool_use",
+      "prompt": "Calculate the factorial of 10.",
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "calculate_factorial",
+            "description": "Calculate the factorial of a non-negative integer",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "n": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "n"
+              ]
+            }
+          }
+        }
+      ],
+      "expected_tool": "calculate_factorial",
+      "expected_args": {
+        "n": 10
+      }
+    },
+    {
+      "id": "ruler-tu-004",
+      "task_type": "tool_use",
+      "prompt": "Send an email to sarah@example.com with the subject 'Meeting Tomorrow' and body 'Don't forget our meeting at 2pm.'",
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "send_email",
+            "description": "Send an email to a recipient",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "to": {
+                  "type": "string"
+                },
+                "subject": {
+                  "type": "string"
+                },
+                "body": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "to",
+                "subject",
+                "body"
+              ]
+            }
+          }
+        }
+      ],
+      "expected_tool": "send_email",
+      "expected_args": {
+        "to": "sarah@example.com",
+        "subject": "Meeting Tomorrow",
+        "body": "Don't forget our meeting at 2pm."
+      }
+    },
+    {
+      "id": "ruler-tu-005",
+      "task_type": "tool_use",
+      "prompt": "Book a flight from New York to London on 2024-12-15 for 2 passengers.",
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "book_flight",
+            "description": "Book a flight between two cities",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "from_city": {
+                  "type": "string"
+                },
+                "to_city": {
+                  "type": "string"
+                },
+                "date": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "passengers": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              },
+              "required": [
+                "from_city",
+                "to_city",
+                "date",
+                "passengers"
+              ]
+            }
+          }
+        }
+      ],
+      "expected_tool": "book_flight",
+      "expected_args": {
+        "from_city": "New York",
+        "to_city": "London",
+        "date": "2024-12-15",
+        "passengers": 2
+      }
+    },
+    {
+      "id": "ruler-tu-006",
+      "task_type": "tool_use",
+      "prompt": "Create a calendar event titled 'Team Standup' on 2024-12-20 from 09:00 to 09:30.",
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "create_event",
+            "description": "Create a calendar event",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "title": {
+                  "type": "string"
+                },
+                "date": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "start_time": {
+                  "type": "string"
+                },
+                "end_time": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "title",
+                "date",
+                "start_time",
+                "end_time"
+              ]
+            }
+          }
+        }
+      ],
+      "expected_tool": "create_event",
+      "expected_args": {
+        "title": "Team Standup",
+        "date": "2024-12-20",
+        "start_time": "09:00",
+        "end_time": "09:30"
+      }
+    },
+    {
+      "id": "ruler-tu-007",
+      "task_type": "tool_use",
+      "prompt": "Look up the stock price for AAPL.",
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "get_stock_price",
+            "description": "Get the current stock price for a ticker symbol",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "ticker": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "ticker"
+              ]
+            }
+          }
+        }
+      ],
+      "expected_tool": "get_stock_price",
+      "expected_args": {
+        "ticker": "AAPL"
+      }
+    },
+    {
+      "id": "ruler-tu-008",
+      "task_type": "tool_use",
+      "prompt": "Translate the phrase 'Good morning' to Spanish.",
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "translate_text",
+            "description": "Translate text to a target language",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string"
+                },
+                "target_language": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "text",
+                "target_language"
+              ]
+            }
+          }
+        }
+      ],
+      "expected_tool": "translate_text",
+      "expected_args": {
+        "text": "Good morning",
+        "target_language": "Spanish"
+      }
+    },
+    {
+      "id": "ruler-tu-009",
+      "task_type": "tool_use",
+      "prompt": "Get the user profile for user ID 42.",
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "get_user_profile",
+            "description": "Retrieve a user's profile by ID",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "user_id": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "user_id"
+              ]
+            }
+          }
+        }
+      ],
+      "expected_tool": "get_user_profile",
+      "expected_args": {
+        "user_id": 42
+      }
+    },
+    {
+      "id": "ruler-tu-010",
+      "task_type": "tool_use",
+      "prompt": "Set a reminder for 2024-12-25 at 08:00 to call mom.",
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "set_reminder",
+            "description": "Set a reminder with a message",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "date": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "time": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "date",
+                "time",
+                "message"
+              ]
+            }
+          }
+        }
+      ],
+      "expected_tool": "set_reminder",
+      "expected_args": {
+        "date": "2024-12-25",
+        "time": "08:00",
+        "message": "call mom"
+      }
+    }
+  ]
+}

@@ -9,6 +9,7 @@ from labs.anchor_kappa import (
     build_pairs,
     cohen_kappa,
     compute_anchor_kappa,
+    gwet_ac1,
 )
 from labs.council import Vote
 
@@ -67,12 +68,15 @@ def test_build_pairs_alternates_truth_side() -> None:
         assert "GOOD" in winner
 
 
-def test_cohen_kappa_bounds() -> None:
-    assert cohen_kappa([]) is None
+def test_gwet_ac1_bounds() -> None:
+    assert gwet_ac1([]) is None
     perfect = [(Vote.A, Vote.A), (Vote.B, Vote.B), (Vote.A, Vote.A), (Vote.B, Vote.B)]
-    assert cohen_kappa(perfect) == 1.0
+    assert gwet_ac1(perfect) == 1.0
     anti = [(Vote.A, Vote.B), (Vote.B, Vote.A), (Vote.A, Vote.B), (Vote.B, Vote.A)]
-    assert cohen_kappa(anti) is not None and cohen_kappa(anti) < 0
+    assert gwet_ac1(anti) is not None and gwet_ac1(anti) < 0
+    # cohen_kappa is now an alias for gwet_ac1 (constitution lock 2026-06-20)
+    assert cohen_kappa(perfect) == gwet_ac1(perfect)
+    assert cohen_kappa(anti) == gwet_ac1(anti)
 
 
 # ── full calibration ─────────────────────────────────────────────────────────

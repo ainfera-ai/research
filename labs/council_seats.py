@@ -29,31 +29,44 @@ class Seat:
     model_slug: str  # real catalog slug (must be active + routable)
     family: str  # maker family — the self-preference exclusion key
     on_spark: bool  # True => open-weight, run locally on Spark Labs
-    role: str = "seat"  # 'chair' (aggregates) | 'dissent' (adversarial) | 'seat'
+    role: str = "member"  # 'chair' (aggregates) | 'dissent' (adversarial) | 'member'
 
 
-# The core cross-family panel. 5 disjoint families → a pairwise verdict (excludes
-# ≤2 families) always retains ≥3 seats / ≥2 families. AA-index in comments (live).
+# The core cross-family panel. 6 disjoint families (constitution requires ≥5)
+# → a pairwise verdict (excludes ≤2 families) always retains ≥4 seats / ≥3
+# families — comfortably above the Step 3 acceptance floor. AA-index in
+# comments (live).
+#
+# Role assignments (AIN-542 §5 constitution):
+#   Námo  — chair   (aggregates, sets the agenda, no tie-breaking veto)
+#   Tulkas — dissent (structural adversarial seat; challenges consensus to
+#                    surface correlated error — the "devil's advocate" role)
+#   all others — member (standard voting seat)
 COUNCIL_SEATS: tuple[Seat, ...] = (
     Seat("Námo", "claude-opus-4-7", "anthropic", on_spark=False, role="chair"),  # aa 73
-    Seat("Manwë", "gpt-5-5", "openai", on_spark=False, role="seat"),  # aa 70
-    Seat("Aulë", "gemini-3-1-pro", "google", on_spark=False, role="seat"),  # aa 68
+    Seat("Manwë", "gpt-5-5", "openai", on_spark=False, role="member"),  # aa 70
+    Seat("Aulë", "gemini-3-1-pro", "google", on_spark=False, role="member"),  # aa 68
     Seat("Tulkas", "grok-4", "xai", on_spark=False, role="dissent"),  # aa 65
     Seat(
-        "Yavanna", "llama-4-405b-together", "meta", on_spark=True, role="seat"
+        "Yavanna", "llama-4-405b-together", "meta", on_spark=True, role="member"
     ),  # aa 62, open-weight
+    Seat(
+        "Ulmo", "mistral-large-3", "mistral", on_spark=False, role="member"
+    ),  # aa 60, Mistral family (AIN-542 §5: ≥5 families incl. OpenAI, Google, Anthropic, Mistral, open-weight)
 )
 
 # Extended open-weight pool — additional Spark seats to deepen family diversity at
 # zero API cost (loaded/unloaded sequentially in the nightly batch). Wired in 3b.
+# Ulmo (mistral-large-3) was promoted to the core COUNCIL_SEATS roster in AIN-542
+# §5 — removed from the pool to avoid a duplicate model_slug (rejected by
+# _validate_roster).
 SPARK_SEAT_POOL: tuple[Seat, ...] = (
-    Seat("Ulmo", "mistral-large-3", "mistral", on_spark=True, role="seat"),  # aa 60
     Seat(
-        "Oromë", "qwen-3-7-max-together", "alibaba", on_spark=True, role="seat"
+        "Oromë", "qwen-3-7-max-together", "alibaba", on_spark=True, role="member"
     ),  # aa 57
-    Seat("Vairë", "minimax-m3-novita", "minimax", on_spark=True, role="seat"),  # aa 55
+    Seat("Vairë", "minimax-m3-novita", "minimax", on_spark=True, role="member"),  # aa 55
     Seat(
-        "Estë", "deepseek-v4-pro-deepinfra", "deepseek", on_spark=True, role="seat"
+        "Estë", "deepseek-v4-pro-deepinfra", "deepseek", on_spark=True, role="member"
     ),  # aa 52
 )
 

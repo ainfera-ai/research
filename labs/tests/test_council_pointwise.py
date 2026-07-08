@@ -37,9 +37,9 @@ def test_excludes_the_candidates_own_family() -> None:
     v = score_response("i1", "T", "ans", "anthropic", _all(4))
     assert "Námo" in v.excluded_seats
     assert "Námo" not in v.seat_scores
-    # the remaining 4 seats span 4 distinct non-anthropic families.
-    assert v.n_seats == 4
-    assert v.n_families == 4
+    # the remaining 5 seats span 5 distinct non-anthropic families.
+    assert v.n_seats == 5
+    assert v.n_families == 5
     assert "anthropic" not in {family_of_persona(p) for p in v.seat_scores}
 
 
@@ -81,12 +81,12 @@ def test_threshold_is_the_anchor_axis() -> None:
 
 
 def test_split_panel_flags_deliberation() -> None:
-    # exclude anthropic; the 4 eligible seats split hard 1/1/5/5.
-    caller = _caller({"Manwë": 1, "Aulë": 1, "Tulkas": 5, "Yavanna": 5})
+    # exclude anthropic; the 5 eligible seats split 1/1/5/5/5.
+    caller = _caller({"Manwë": 1, "Aulë": 1, "Tulkas": 5, "Yavanna": 5, "Ulmo": 5})
     v = score_response("i1", "T", "ans", "anthropic", caller)
     assert v.dispersion > 0.6
     assert needs_deliberation(v) is True
-    assert v.consensus_score == 3.0  # mean of 1,1,5,5
+    assert v.consensus_score == 3.4  # mean of 1,1,5,5,5
 
 
 def test_unanimous_does_not_need_deliberation() -> None:
@@ -98,12 +98,12 @@ def test_unanimous_does_not_need_deliberation() -> None:
 
 
 def test_abstaining_seat_is_unreachable_not_scored() -> None:
-    # Yavanna abstains (None); excluded family = openai.
-    caller = _caller({"Námo": 4, "Aulë": 4, "Tulkas": 4, "Yavanna": None})
+    # Yavanna abstains (None); excluded family = openai → Manwë excluded.
+    caller = _caller({"Námo": 4, "Aulë": 4, "Tulkas": 4, "Yavanna": None, "Ulmo": 4})
     v = score_response("i1", "T", "ans", "openai", caller)
     assert "Yavanna" in v.unreachable_seats
     assert "Yavanna" not in v.seat_scores
-    assert v.n_seats == 3  # Námo, Aulë, Tulkas scored; Manwë excluded (openai)
+    assert v.n_seats == 4  # Námo, Aulë, Tulkas, Ulmo scored; Manwë excluded (openai)
     assert v.degraded is True  # an unreachable seat makes the roster degraded
 
 
@@ -129,14 +129,14 @@ def test_floor_not_met_when_too_few_seats_score() -> None:
 
 
 def test_reliability_downweights_a_seat() -> None:
-    caller = _caller({"Manwë": 1, "Aulë": 5, "Tulkas": 5, "Yavanna": 5})
-    # uniform mean of 1,5,5,5 = 4.0; down-weighting the dissenter pulls it higher.
+    caller = _caller({"Manwë": 1, "Aulë": 5, "Tulkas": 5, "Yavanna": 5, "Ulmo": 5})
+    # uniform mean of 1,5,5,5,5 = 4.2; down-weighting the dissenter pulls it higher.
     base = score_response("i1", "T", "ans", "anthropic", caller)
     weighted = score_response(
         "i1", "T", "ans", "anthropic", caller,
-        seat_reliability={"Manwë": 0.1, "Aulë": 1.0, "Tulkas": 1.0, "Yavanna": 1.0},
+        seat_reliability={"Manwë": 0.1, "Aulë": 1.0, "Tulkas": 1.0, "Yavanna": 1.0, "Ulmo": 1.0},
     )
-    assert base.consensus_score == 4.0
+    assert base.consensus_score == 4.2
     assert weighted.consensus_score > base.consensus_score
 
 

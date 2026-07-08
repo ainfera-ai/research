@@ -139,9 +139,14 @@ def run():
             chosen = rng.choice(models)
         else:
             est = {m: learner.estimate(m, x) for m in models}
-            kept = [m for m in models if est[m][0] >= bar]   # exploit on mean estimate
+            # Only consider models at or below the baseline price — the router's
+            # job is to find CHEAPER alternatives, never upgrade to a pricier model
+            # (the -7.7% savings regression: picking model-a at $15 when the
+            # baseline is model-b at $5).
+            affordable = [m for m in models if price[m] <= price[agent_default]]
+            kept = [m for m in affordable if est[m][0] >= bar]
             if not kept:
-                kept = [max(models, key=lambda m: est[m][0])]
+                kept = [agent_default]  # safe default: the baseline itself
             chosen = min(kept, key=lambda m: price[m])
         q, _ = record("ainfera_learned", chosen)
         learner.update(chosen, x, q)  # judge label (1-5) -> reward

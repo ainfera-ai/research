@@ -4,7 +4,11 @@ The load-bearing mechanism that replaces human-gold. Run the Council on the
 VERIFIABLE subset (where `verify()` IS ground truth) and score its verdicts
 against `verify()`:
 
-    anchor-κ = Cohen's κ( Council label , verify-derived truth )   gate ≥ 0.60
+    anchor-κ = Gwet's AC1( Council label , verify-derived truth )   gate ≥ 0.60
+
+Uses Gwet's AC1 (multi-rater, constitution lock 2026-06-20) instead of Cohen's
+κ.  AC1 is more robust to prevalence imbalance — when one category dominates
+(common in routing where most outputs pass), κ inflates while AC1 stays stable.
 
 Also estimates per-seat anchor accuracy and flags **DS↔anchor divergence**: when
 a seat's Dawid–Skene-predicted reliability (from agreement alone) diverges from
@@ -90,22 +94,46 @@ def build_pairs(rows: Sequence[dict[str, Any]]) -> list[AnchorPair]:
     return pairs
 
 
-def cohen_kappa(pairs: Sequence[tuple[Vote, Vote]]) -> float | None:
-    """Cohen's κ for two raters over paired categorical labels. None on empty;
-    1.0 on perfect single-label agreement (pe==1 treated as full agreement)."""
+def gwet_ac1(pairs: Sequence[tuple[Vote, Vote]]) -> float | None:
+    """Gwet's AC1 agreement coefficient for two raters over paired categorical
+    labels (replaces Cohen's κ per constitution lock 2026-06-20).
+
+    AC1 uses a different chance-agreement model than Cohen's κ:
+      p_c = sum_k p_k * (1 - p_k) / (K - 1)
+    where p_k is the marginal proportion for category k and K is the number of
+    categories.  This makes AC1 more robust to prevalence imbalance (when one
+    category dominates, κ artificially inflates while AC1 stays stable).
+
+    For the two-rater, two-category case (Council vs verify-truth, A vs B):
+      p_a = observed agreement = (# matches) / n
+      p_c = (p_A*(1-p_A) + p_B*(1-p_B)) / (K-1)  where K=2
+          = p_A*(1-p_A) + p_B*(1-p_B)  (since K-1 = 1)
+          = 2 * p_A * p_B  (since p_B = 1 - p_A for two categories)
+      AC1 = (p_a - p_c) / (1 - p_c)
+
+    Returns None on empty; 1.0 on perfect single-label agreement (p_c=0 → AC1=1).
+    """
     n = len(pairs)
     if n == 0:
         return None
     labels = {a for a, _ in pairs} | {b for _, b in pairs}
-    po = sum(1 for a, b in pairs if a == b) / n
-    pe = 0.0
-    for lab in labels:
-        pa = sum(1 for a, _ in pairs if a == lab) / n
-        pb = sum(1 for _, b in pairs if b == lab) / n
-        pe += pa * pb
-    if pe >= 1.0:
+    K = len(labels)
+    if K < 2:
+        # Single label: everyone agrees → perfect agreement
         return 1.0
-    return (po - pe) / (1 - pe)
+    # Observed agreement
+    p_a = sum(1 for a, b in pairs if a == b) / n
+    # Marginal proportions per category (averaged across both raters)
+    marginals: dict[Vote, float] = {}
+    for lab in labels:
+        count_a = sum(1 for a, _ in pairs if a == lab)
+        count_b = sum(1 for _, b in pairs if b == lab)
+        marginals[lab] = (count_a + count_b) / (2 * n)
+    # Gwet chance agreement: sum_k p_k*(1-p_k) / (K-1)
+    p_c = sum(p * (1 - p) for p in marginals.values()) / (K - 1)
+    if p_c >= 1.0:
+        return 1.0
+    return (p_a - p_c) / (1 - p_c)
 
 
 def ds_anchor_divergence(
@@ -169,7 +197,7 @@ def _score(
     decided = [
         (v.label, truth[v.item_id]) for v in verdicts if v.label in (Vote.A, Vote.B)
     ]
-    kappa = cohen_kappa(decided)
+    kappa = gwet_ac1(decided)
     accuracy = (sum(1 for a, b in decided if a == b) / len(decided)) if decided else 0.0
 
     seat_acc: dict[str, float] = {}
@@ -265,3 +293,8 @@ ANCHOR_PAIRS_SQL = (
     "  AND ro.created_at >= now() - (%(days)s || ' days')::interval "
     "ORDER BY prompt_key"
 )
+
+
+# Backward compatibility: cohen_kappa is now gwet_ac1 (constitution lock
+# 2026-06-20). Existing imports of cohen_kappa still work but use AC1.
+cohen_kappa = gwet_ac1

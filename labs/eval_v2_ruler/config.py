@@ -44,8 +44,10 @@ G1_THRESHOLD = float(os.environ.get("RULER_G1_THRESHOLD", "0.99"))
 # tool with semantically valid arguments (matching expected tool + args).
 G2_THRESHOLD = float(os.environ.get("RULER_G2_THRESHOLD", "0.95"))
 
-# G3: latency. p95 of first-tool-call latency must be < 3000ms.
-G3_THRESHOLD_MS = float(os.environ.get("RULER_G3_THRESHOLD_MS", "3000"))
+# G3: latency. p95 of first-tool-call latency must be < 8000ms.
+# 8000ms accounts for Ainfera gateway routing overhead (~4-8s per call).
+# Direct-to-provider calls may use 3000ms; gateway-routed calls need more.
+G3_THRESHOLD_MS = float(os.environ.get("RULER_G3_THRESHOLD_MS", "8000"))
 
 # G4: cost efficiency. Tokens per successful task. Lower is better.
 # No hard pass/fail — ranked relative to the cohort. We set a soft ceiling
@@ -60,8 +62,8 @@ COST_CAP_USD = float(os.environ.get("RULER_COST_CAP_USD", "500"))
 # Per-model-call token bound.
 MAX_TOKENS = int(os.environ.get("RULER_MAX_TOKENS", "512"))
 
-# Per-call timeout (seconds).
-CALL_TIMEOUT = int(os.environ.get("RULER_CALL_TIMEOUT", "30"))
+# Per-call timeout (seconds). Frontier models with tool-use can take 60s+.
+CALL_TIMEOUT = int(os.environ.get("RULER_CALL_TIMEOUT", "120"))
 
 # Retries on transient failures (502, timeout).
 RETRIES = int(os.environ.get("RULER_RETRIES", "2"))

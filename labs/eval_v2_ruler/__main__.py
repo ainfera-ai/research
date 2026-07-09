@@ -50,6 +50,11 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         help=f"Path to a frozen task-set JSON (default: {config.DEFAULT_TASKSET}).",
     )
     p.add_argument(
+        "--slugs",
+        default=None,
+        help="Comma-separated model slugs to score (bypasses catalog fetch).",
+    )
+    p.add_argument(
         "--max-models",
         type=int,
         default=None,
@@ -71,8 +76,21 @@ def main(argv: list[str] | None = None) -> int:
     print(f"ruler: task-set {frozen.version} (hash={frozen.hash[:12]}..., {frozen.n} tasks)",
           file=sys.stderr)
 
+    # Build explicit model list if --slugs provided
+    models = None
+    if args.slugs:
+        from labs.eval_v2_ruler.catalog import CatalogModel
+        slugs = [s.strip() for s in args.slugs.split(",") if s.strip()]
+        models = [CatalogModel(
+            slug=s, display_name=s, provider="custom", type="model",
+            input_cost_per_million=None, output_cost_per_million=None,
+            context_window=None, capabilities=(), routable_status="active",
+        ) for s in slugs]
+        print(f"ruler: scoring {len(models)} explicit slugs (bypassing catalog)", file=sys.stderr)
+
     res = run_ruler(
         frozen,
+        models=models,
         max_models=args.max_models,
         output_dir=args.output_dir,
     )

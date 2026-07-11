@@ -36,3 +36,6 @@ coverage.xml
 *.cover
 htmlcov/
 .tox/
+datasets/
+labs/eval-v2-results*/
+*.egg-info/
